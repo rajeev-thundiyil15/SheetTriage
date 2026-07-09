@@ -1,0 +1,11 @@
+id,name,email,age,salary,department,start_date
+1,Alice Johnson,alice@example.com,32,75000.0,Engineering,2021-03-15
+2,Bob Smith,bob-no-at-sign,25,sixty thousand,Sales,2020-07-01
+3,Carol White,carol@example.com,15,52000.0,Marketing,2022-01-10
+4,,dave@example.com,40,95000.0,HR,2019-05-20
+5,Eve Davis,eve@example.com,29,-500.0,Finance,2023-02-28
+6,Frank Lee,frank@example.com,38,88000.0,Enginneering,2018-11-03
+7,Grace Kim,grace@example.com,47,102000.0,Engineering,15/06/2017
+8,Hank Moore,hank@example.com,,71000.0,Sales,2021-09-14
+9,Iris Brown,iris@example.com,33,64000.0,marketing,2022-06-30
+10,Jack Wilson,jack@example.com,28,79000.0,Engineering,2023-08-01

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python3.14 --version)",
+      "PowerShell(python3 --version)",
+      "PowerShell(Start-Sleep -Seconds 6; try { $r = Invoke-WebRequest -Uri \"http://localhost:8000\" -TimeoutSec 5 -UseBasicParsing; \"UP — $\\($r.StatusCode\\)\" } catch { \"Not ready: $_\" })"
+    ]
+  }
+}

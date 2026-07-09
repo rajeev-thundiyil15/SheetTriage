@@ -1,0 +1,13 @@
+{
+  "name": "products",
+  "columns": {
+    "product_id":     { "dtype": "int",   "nullable": false },
+    "product_name":   { "dtype": "str",   "nullable": false },
+    "category":       { "dtype": "str",   "nullable": false, "allowed_values": ["Electronics", "Clothing", "Food", "Books", "Sports"] },
+    "price":          { "dtype": "float", "nullable": false, "min_value": 0 },
+    "stock_qty":      { "dtype": "int",   "nullable": false, "min_value": 0 },
+    "supplier_email": { "dtype": "str",   "nullable": false, "pattern": ".+@.+\\..+" },
+    "last_restocked": { "dtype": "date",  "nullable": false },
+    "rating":         { "dtype": "float", "nullable": true,  "min_value": 0, "max_value": 5 }
+  }
+}

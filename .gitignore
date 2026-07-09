@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# uv
+.venv/
+.uv/
+
+# Data outputs — don't commit cleaned files or job outputs
+data/*_clean.csv
+data/*_report.csv
+data/*.csv
+!data/dirty_employees.csv
+!data/dirty_products.csv
+
+# OS
+.DS_Store
+Thumbs.db

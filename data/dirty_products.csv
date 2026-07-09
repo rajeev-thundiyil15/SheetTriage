@@ -1,0 +1,16 @@
+product_id,product_name,category,price,stock_qty,supplier_email,last_restocked,rating
+1,Wireless Headphones,Electronics,89.99,150,supplier@techco.com,2024-11-01,4.5
+2,Running Shoes,Sports,sixty five,42,shoes@sportsgear.com,2024-10-15,4.2
+3,Python Programming Book,Books,39.99,200,books@publisher.com,2024-12-01,4.8
+4,,Electronics,129.99,75,gadgets@store.com,2024-09-20,3.9
+5,Yoga Mat,Sports,25.00,-10,yoga@wellness.com,2024-11-20,4.1
+6,Bluetooth Speaker,Electronis,55.00,88,audio@techco.com,2024-10-30,4.6
+7,Denim Jacket,Clothing,79.99,33,fashion-no-email,2024-08-15,3.7
+8,Organic Coffee,Food,18.50,500,coffee@roasters.com,15/07/2024,4.9
+9,Laptop Stand,Electronics,45.00,0,stands@office.com,2024-12-10,6.2
+10,Basketball,sports,32.00,60,ball@sportsgear.com,2024-09-05,4.0
+11,Cookbook,Books,28.99,120,books@publisher.com,2024-11-15,
+12,USB-C Cable,Electronics,12.99,-5,cables@techco.com,2024-10-01,4.3
+13,Winter Coat,Clothing,149.99,18,fashion@clothing.com,2024-08-01,4.7
+14,Protein Powder,Food,,200,nutrition@health.com,2024-12-05,4.4
+15,Tennis Racket,Sports,95.00,25,tennis@sportsgear.com,2024-11-28,4.1

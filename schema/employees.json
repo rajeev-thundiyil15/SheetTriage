@@ -1,0 +1,12 @@
+{
+  "name": "employees",
+  "columns": {
+    "id":         { "dtype": "int",   "nullable": false },
+    "name":       { "dtype": "str",   "nullable": false },
+    "email":      { "dtype": "str",   "nullable": false, "pattern": ".+@.+\\..+" },
+    "age":        { "dtype": "int",   "nullable": false, "min_value": 18, "max_value": 100 },
+    "salary":     { "dtype": "float", "nullable": false, "min_value": 0 },
+    "department": { "dtype": "str",   "nullable": false, "allowed_values": ["Engineering", "Sales", "Marketing", "HR", "Finance"] },
+    "start_date": { "dtype": "date",  "nullable": false }
+  }
+}

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Cleaning Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 48px;
+      background: white;
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { font-size: 16px; font-weight: 700; color: var(--accent); }
+    .nav-link {
+      font-size: 13px; font-weight: 500; color: var(--text-muted);
+      text-decoration: none; transition: color .15s;
+    }
+    .nav-link:hover { color: var(--accent); }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 64px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #ede9fe; color: var(--accent);
+      font-size: 12px; font-weight: 600;
+      padding: 5px 12px; border-radius: 20px;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800; line-height: 1.15;
+      color: var(--text); margin-bottom: 20px;
+    }
+    .hero h1 span {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 18px; color: var(--text-muted);
+      line-height: 1.7; max-width: 560px; margin: 0 auto 36px;
+    }
+
+    /* how it works row */
+    .flow {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; flex-wrap: wrap; margin-bottom: 60px;
+    }
+    .flow-step {
+      background: white; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 13px; font-weight: 500; color: var(--text);
+      display: flex; align-items: center; gap: 7px;
+    }
+    .flow-arrow { color: #a5b4fc; font-size: 18px; }
+
+    /* ── Mode cards ── */
+    .section-label {
+      text-align: center;
+      font-size: 12px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--text-muted); margin-bottom: 20px;
+    }
+
+    .modes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 1060px;
+      margin: 0 auto 80px;
+      padding: 0 24px;
+    }
+
+    .mode-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 28px;
+      display: flex; flex-direction: column;
+      transition: all .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      opacity: 0; transition: opacity .2s;
+    }
+    .mode-card.audit::before   { background: #818cf8; }
+    .mode-card.clean::before   { background: linear-gradient(90deg,#6366f1,#8b5cf6); }
+    .mode-card.strict::before  { background: #22c55e; }
+
+    .mode-card:hover { border-color: #a5b4fc; transform: translateY(-3px); box-shadow: 0 8px 24px rgba(99,102,241,.12); }
+    .mode-card:hover::before { opacity: 1; }
+
+    .mode-card.featured {
+      border-color: var(--accent);
+      box-shadow: 0 4px 20px rgba(99,102,241,.15);
+    }
+    .mode-card.featured::before { opacity: 1; }
+
+    .featured-badge {
+      position: absolute; top: 16px; right: 16px;
+      background: var(--accent); color: white;
+      font-size: 10px; font-weight: 700;
+      padding: 3px 8px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+
+    .mode-icon-wrap {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; margin-bottom: 18px;
+    }
+    .audit  .mode-icon-wrap { background: #ede9fe; }
+    .clean  .mode-icon-wrap { background: #ede9fe; }
+    .strict .mode-icon-wrap { background: #dcfce7; }
+
+    .mode-card h2 { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+    .mode-tagline {
+      font-size: 13px; color: var(--accent); font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .mode-desc {
+      font-size: 14px; color: var(--text-muted);
+      line-height: 1.7; margin-bottom: 20px; flex: 1;
+    }
+
+    .mode-bullets { list-style: none; margin-bottom: 28px; }
+    .mode-bullets li {
+      font-size: 13px; color: #334155;
+      padding: 5px 0; border-bottom: 1px solid #f1f5f9;
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .mode-bullets li:last-child { border-bottom: none; }
+    .bullet-icon { margin-top: 1px; flex-shrink: 0; }
+
+    .mode-cta {
+      display: block; width: 100%;
+      padding: 11px; border-radius: 8px;
+      text-align: center; text-decoration: none;
+      font-size: 14px; font-weight: 600;
+      transition: all .2s;
+    }
+    .audit  .mode-cta { background: #ede9fe; color: var(--accent); }
+    .audit  .mode-cta:hover { background: var(--accent); color: white; }
+    .clean  .mode-cta { background: var(--accent); color: white; }
+    .clean  .mode-cta:hover { background: var(--accent-hover); box-shadow: 0 4px 12px rgba(99,102,241,.3); }
+    .strict .mode-cta { background: #dcfce7; color: #16a34a; }
+    .strict .mode-cta:hover { background: #22c55e; color: white; }
+
+    /* ── What it fixes ── */
+    .fixes-section {
+      background: white; border-top: 1px solid var(--border);
+      padding: 60px 24px;
+    }
+    .fixes-inner { max-width: 860px; margin: 0 auto; }
+    .fixes-section h3 {
+      font-size: 22px; font-weight: 700; text-align: center;
+      margin-bottom: 8px;
+    }
+    .fixes-section .sub {
+      text-align: center; color: var(--text-muted); font-size: 14px;
+      margin-bottom: 36px;
+    }
+    .fixes-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    }
+    .fix-item {
+      background: var(--bg); border-radius: 10px; padding: 16px 18px;
+      border: 1px solid var(--border);
+    }
+    .fix-item .fix-label { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .fix-item .fix-example {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--text-muted);
+    }
+    .fix-example .bad  { color: #ef4444; text-decoration: line-through; }
+    .fix-example .good { color: #22c55e; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center; padding: 28px;
+      font-size: 12px; color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 768px) {
+      .modes { grid-template-columns: 1fr; }
+      .fixes-grid { grid-template-columns: 1fr 1fr; }
+      nav { padding: 16px 20px; }
+      .hero { padding: 48px 20px 40px; }
+    }
+    @media (max-width: 480px) {
+      .fixes-grid { grid-template-columns: 1fr; }
+      .flow { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">⚡ Data Cleaning Agent</span>
+  <a href="/app" class="nav-link">Open Tool →</a>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-badge">✦ Powered by Claude AI</div>
+  <h1>Clean messy data<br><span>without losing a thing</span></h1>
+  <p>Upload a CSV, describe your rules in plain English, and let an AI agent inspect, fix, and report on your data — field by field, row by row.</p>
+
+  <div class="flow">
+    <div class="flow-step">📂 Upload CSV</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">✏️ Describe rules</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">⚡ Agent runs</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">📊 Download results</div>
+  </div>
+</section>
+
+<!-- ── Mode cards ── -->
+<div style="max-width:1060px; margin:0 auto; padding:0 24px;">
+  <p class="section-label">Choose how you want to work with your data</p>
+</div>
+
+<div class="modes">
+
+  <!-- Audit -->
+  <div class="mode-card audit">
+    <div class="mode-icon-wrap">🔍</div>
+    <h2>Audit Only</h2>
+    <p class="mode-tagline">Not sure what's wrong? Start here.</p>
+    <p class="mode-desc">
+      The agent scans your entire dataset and produces a detailed error report —
+      without changing a single value. Perfect when you need to understand
+      data quality before deciding what to do.
+    </p>
+    <ul class="mode-bullets">
+      <li><span class="bullet-icon">📋</span>Returns a report CSV listing every error by row ID and field</li>
+      <li><span class="bullet-icon">🔒</span>Your original data is never modified</li>
+      <li><span class="bullet-icon">👁️</span>Annotated output shows which rows have issues</li>
+    </ul>
+    <a href="/app?mode=audit" class="mode-cta">Start Audit →</a>
+  </div>
+
+  <!-- Clean + Report (featured) -->
+  <div class="mode-card clean featured">
+    <div class="featured-badge">Most Popular</div>
+    <div class="mode-icon-wrap">🛠️</div>
+    <h2>Clean + Report</h2>
+    <p class="mode-tagline">Fix what's safe. Flag the rest.</p>
+    <p class="mode-desc">
+      The agent automatically corrects errors it can safely infer — typos,
+      casing, type coercion, date formats. Anything ambiguous gets flagged
+      for human review. No row is ever silently deleted.
+    </p>
+    <ul class="mode-bullets">
+      <li><span class="bullet-icon">✅</span>Auto-fixes typos, wrong types, and bad formatting</li>
+      <li><span class="bullet-icon">🏷️</span>Flags unfixable rows with an <code style="font-size:11px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">_errors</code> column</li>
+      <li><span class="bullet-icon">📊</span>Full error report + annotated CSV output</li>
+      <li><span class="bullet-icon">🔐</span>All rows preserved — nothing silently removed</li>
+    </ul>
+    <a href="/app?mode=clean" class="mode-cta">Start Cleaning →</a>
+  </div>
+
+  <!-- Strict -->
+  <div class="mode-card strict">
+    <div class="mode-icon-wrap">✅</div>
+    <h2>Strict Clean</h2>
+    <p class="mode-tagline">Pipeline-ready output only.</p>
+    <p class="mode-desc">
+      Same smart fixes as Clean mode, but any row that can't be fully
+      corrected is removed from the output. You get a guaranteed-valid
+      CSV and a report documenting every row that was excluded.
+    </p>
+    <ul class="mode-bullets">
+      <li><span class="bullet-icon">💎</span>Output CSV contains only 100% valid rows</li>
+      <li><span class="bullet-icon">📋</span>Report shows every removed row and why</li>
+      <li><span class="bullet-icon">⚙️</span>Ideal for feeding into databases or pipelines</li>
+    </ul>
+    <a href="/app?mode=strict" class="mode-cta">Start Strict Clean →</a>
+  </div>
+
+</div>
+
+<!-- ── What it fixes ── -->
+<section class="fixes-section">
+  <div class="fixes-inner">
+    <h3>What the agent catches and fixes</h3>
+    <p class="sub">Examples from real dirty data — the agent handles all of these automatically.</p>
+    <div class="fixes-grid">
+      <div class="fix-item">
+        <div class="fix-label">Typos in categories</div>
+        <div class="fix-example"><span class="bad">Electronis</span> → <span class="good">Electronics</span></div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Wrong capitalisation</div>
+        <div class="fix-example"><span class="bad">sports</span> → <span class="good">Sports</span></div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Number stored as text</div>
+        <div class="fix-example"><span class="bad">"sixty five"</span> → flagged</div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Invalid email format</div>
+        <div class="fix-example"><span class="bad">bob-no-at-sign</span> → flagged</div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Value below minimum</div>
+        <div class="fix-example"><span class="bad">stock_qty: -10</span> → flagged</div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Missing required field</div>
+        <div class="fix-example"><span class="bad">product_name: (empty)</span> → flagged</div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Rating out of range</div>
+        <div class="fix-example"><span class="bad">rating: 6.2</span> → flagged (max 5)</div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Wrong date format</div>
+        <div class="fix-example"><span class="bad">15/07/2024</span> → <span class="good">2024-07-15</span></div>
+      </div>
+      <div class="fix-item">
+        <div class="fix-label">Wrong data type</div>
+        <div class="fix-example"><span class="bad">price: "89.99"</span> → <span class="good">89.99 (float)</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Built with Python · FastAPI · Claude AI (Haiku) · pandas
+</footer>
+
+</body>
+</html>
