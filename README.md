@@ -1,4 +1,4 @@
-# Data Cleaning Agent
+# SheetTriage
 
 An AI-powered data quality tool that inspects, cleans, and reports on CSV files — field by field, row by row.
 
