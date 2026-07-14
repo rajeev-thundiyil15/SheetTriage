@@ -125,8 +125,7 @@ def mark_row_error(row_index: int, column_name: str, issue: str, id_column: str 
 
     # Append to the row's error string
     current = str(df.at[row_index, "_errors"]) if df.at[row_index, "_errors"] else ""
-    entry = f"{column_name}: {issue}"
-    df.at[row_index, "_errors"] = (current + "; " + entry).lstrip("; ")
+    df.at[row_index, "_errors"] = (current + "; " + issue).lstrip("; ")
 
     # Capture the original (current) value for the report
     original_value = str(df.at[row_index, column_name]) if column_name in df.columns else "(unknown)"

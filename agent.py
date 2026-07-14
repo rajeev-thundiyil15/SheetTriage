@@ -109,7 +109,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "row_index": {"type": "integer", "description": "Integer row index from validate_column output."},
                 "column_name": {"type": "string", "description": "The column that has the violation."},
-                "issue": {"type": "string", "description": "Plain-English description of what is wrong."},
+                "issue": {"type": "string", "description": "A complete, plain-English sentence describing the problem so a non-technical person can understand it. Include the field name and the actual value. Example: 'The email address \"bob-no-at\" is not valid — it must contain @ and a domain.' NOT: 'does not match pattern'."},
                 "id_column": {
                     "type": "string",
                     "description": "Name of the column that identifies this row (e.g. 'product_id'). Used in the report.",
