@@ -21,13 +21,15 @@ from schema import DataSchema
 
 _state: dict[str, Any] = {
     "df": None,
-    "error_log": [],   # [{row_index, id_value, column, original_value, error}]
+    "error_log": [],        # [{row_index, id_value, column, original_value, error}]
+    "validated_clean": set(),  # columns confirmed 0 violations as of their last validate_column call
 }
 
 
 def set_dataframe(df: pd.DataFrame) -> None:
     _state["df"] = df.copy()
     _state["error_log"] = []
+    _state["validated_clean"] = set()
 
 
 def get_dataframe() -> pd.DataFrame:
@@ -99,7 +101,10 @@ def validate_column(column_name: str, schema: DataSchema) -> str:
             flat.append((int(idx), f"'{val}' does not match pattern {col_schema.pattern}"))
 
     if not flat:
+        _state["validated_clean"].add(column_name)
         return json.dumps({"column": column_name, "total_violations": 0, "groups": []})
+
+    _state["validated_clean"].discard(column_name)
 
     groups: dict[str, dict] = {}
     for row_idx, issue in flat:
@@ -276,6 +281,7 @@ def save_with_report(
     report_path: str,
     id_column: str = "",
     exclude_error_rows: bool = False,
+    schema: DataSchema | None = None,
 ) -> str:
     """
     Writes two files:
@@ -283,8 +289,23 @@ def save_with_report(
     2. Report CSV — one row per violation: who, which field, what's wrong.
 
     exclude_error_rows=True → strict mode: only rows with no errors are saved to the CSV.
+
+    Refuses to save until every schema column has a fresh validate_column call showing
+    0 violations — prevents an early/incomplete save from being reported as "all clean".
     """
     df: pd.DataFrame = _state["df"]
+
+    if schema is not None:
+        missing = [c for c in schema.columns if c not in _state["validated_clean"]]
+        if missing:
+            return json.dumps({
+                "error": (
+                    "Not all columns confirmed clean yet. Still need a validate_column "
+                    f"call (showing 0 remaining violations) for: {', '.join(missing)}. "
+                    "Fix or flag anything it finds, then validate_column again until it "
+                    "reports 0, then retry save_with_report."
+                )
+            })
 
     if "_errors" not in df.columns:
         df["_errors"] = ""
@@ -303,12 +324,18 @@ def save_with_report(
     log = _state["error_log"]
     Path(report_path).parent.mkdir(parents=True, exist_ok=True)
 
+    col_counts = Counter(e["column"] for e in log)
+    issue_counts = Counter((e["column"], e["error"]) for e in log)
+    top_issues = [
+        {"column": col, "issue": issue, "count": count}
+        for (col, issue), count in issue_counts.most_common(15)
+    ]
+
     with open(report_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
 
         if log:
             # ── Summary block ──
-            col_counts = Counter(e["column"] for e in log)
             affected_rows = len(set(e["row_index"] for e in log))
 
             w.writerow(["SUMMARY"])
@@ -336,6 +363,8 @@ def save_with_report(
         "rows_with_errors": flagged_rows,
         "rows_in_output_csv": len(output_df),
         "total_issues_logged": len(log),
+        "issues_by_column": dict(col_counts),
+        "top_issues": top_issues,
     })
 
 

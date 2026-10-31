@@ -141,10 +141,12 @@ TOOL_DEFINITIONS = [
     {
         "name": "save_with_report",
         "description": (
-            "Save two files when ALL columns have been validated: "
+            "Save two files: "
             "1. A CSV output (all rows with _errors column, or only clean rows if exclude_error_rows=true). "
             "2. A report CSV listing every flagged row, field by field. "
-            "Call this only once, at the very end."
+            "This will be REJECTED unless every schema column has a validate_column call "
+            "(after this round's fixes/marks) showing 0 remaining violations — call "
+            "validate_column one final time per column to confirm before calling this."
         ),
         "input_schema": {
             "type": "object",
@@ -261,6 +263,7 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
                 inputs["report_path"],
                 inputs.get("id_column", ""),
                 inputs.get("exclude_error_rows", False),
+                schema,
             )
         return json.dumps({"error": f"Unknown tool: {name}"})
     except Exception as exc:
@@ -321,7 +324,9 @@ WORKFLOW:
 2. Call validate_column for every column.
 3. For EVERY violation, call mark_row_error — record it exactly as found.
    Do NOT call fix_dtype, fix_allowed_values, or fill_null under any circumstances.
-4. When all columns are validated, call save_with_report:
+4. After marking a column's violations, call validate_column on it one more time to
+   confirm 0 remain — save_with_report will reject the save otherwise.
+5. When every column shows 0 remaining violations, call save_with_report:
    - csv_path="{output_path}"
    - report_path="{report_path}"
    - id_column= column that best identifies a row (e.g. "product_id")
@@ -341,8 +346,9 @@ WORKFLOW:
    - Wrong dtype that is clearly readable (e.g. a number stored as text) → fix_dtype, then re-validate
    - Anything ambiguous or unrecoverable → mark_row_error
    - Null in a nullable field → leave it alone
-4. Re-validate after each fix to confirm it worked.
-5. When all columns are done, call save_with_report:
+4. After fixing or marking a column's violations, call validate_column on it one more
+   time to confirm 0 remain — save_with_report will reject the save otherwise.
+5. When every column shows 0 remaining violations, call save_with_report:
    - csv_path="{output_path}"
    - report_path="{report_path}"
    - id_column= column that best identifies a row (e.g. "product_id")
@@ -362,8 +368,9 @@ WORKFLOW:
    - Wrong dtype that is clearly readable → fix_dtype, then re-validate
    - Unrecoverable value, unknown correct value, unfixable null → mark_row_error (row is kept)
    - Null in a nullable field → leave it alone
-4. Re-validate after each fix to confirm it worked.
-5. When all columns are done, call save_with_report:
+4. After fixing or marking a column's violations, call validate_column on it one more
+   time to confirm 0 remain — save_with_report will reject the save otherwise.
+5. When every column shows 0 remaining violations, call save_with_report:
    - csv_path="{output_path}"
    - report_path="{report_path}"
    - id_column= column that best identifies a row (e.g. "product_id")
@@ -443,7 +450,7 @@ Be brief. One sentence of reasoning per step. When marking unfixable violations,
                 elif tb.name == "bulk_mark_errors" and isinstance(parsed, dict):
                     stats["flagged"] += parsed.get("marked", 0)
                     _emit_progress()
-                elif tb.name == "save_with_report" and isinstance(parsed, dict):
+                elif tb.name == "save_with_report" and isinstance(parsed, dict) and "error" not in parsed:
                     _log({"type": "summary", **parsed})
 
                 tool_results.append({

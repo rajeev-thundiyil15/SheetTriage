@@ -150,11 +150,13 @@
     .col-row[data-status="pending"]  .col-dot { background: var(--border); }
     .col-row[data-status="checking"] .col-dot { background: #fbbf24; animation: pulse 1.5s infinite; }
     .col-row[data-status="clean"]    .col-dot { background: var(--green); }
+    .col-row[data-status="flagged"]  .col-dot { background: #f59e0b; }
     .col-name { flex: 1; color: var(--text); }
     .col-row[data-status="pending"]  .col-name { color: var(--text-muted); }
     .col-state { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
     .col-row[data-status="clean"] .col-state { color: var(--green); }
     .col-row[data-status="checking"] .col-state { color: #b45309; }
+    .col-row[data-status="flagged"] .col-state { color: #b45309; }
 
     /* ── Summary banner ── */
     .summary-banner {
@@ -167,6 +169,21 @@
     }
     .summary-banner .detail {
       font-size: 13px; color: #15803d; line-height: 1.6;
+    }
+    .issues-list {
+      margin-top: 12px; padding-top: 12px; border-top: 1px solid #bbf7d0;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .issues-list .issues-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .04em; color: #166534; margin-bottom: 2px;
+    }
+    .issue-row {
+      font-size: 12px; color: #15803d; line-height: 1.5;
+      display: flex; gap: 6px;
+    }
+    .issue-row .issue-count {
+      font-weight: 600; color: #166534; flex-shrink: 0;
     }
 
     .empty-state {
@@ -209,6 +226,10 @@
       <div class="summary-banner" id="summary-banner">
         <div class="headline" id="summary-headline"></div>
         <div class="detail" id="summary-detail"></div>
+        <div class="issues-list" id="issues-list" style="display:none">
+          <div class="issues-label">Most common issues</div>
+          <div id="issues-rows"></div>
+        </div>
       </div>
 
       <div class="log-panel">
@@ -312,6 +333,7 @@
   }
 
   const STATUS_LABEL = { pending: 'Not started', checking: 'Needs fixes', clean: 'Clean' };
+  let lastColumns = {};
 
   function renderProgress(msg) {
     const panel = document.getElementById('progress-panel');
@@ -320,13 +342,32 @@
     const statsEl = document.getElementById('progress-stats');
     statsEl.innerHTML = `<strong>${msg.fixed || 0}</strong> fixed &nbsp;·&nbsp; <strong>${msg.flagged || 0}</strong> flagged for review`;
 
+    lastColumns = msg.columns || {};
     const list = document.getElementById('column-checklist');
     list.innerHTML = '';
-    for (const [col, status] of Object.entries(msg.columns || {})) {
+    for (const [col, status] of Object.entries(lastColumns)) {
       const row = document.createElement('div');
       row.className = 'col-row';
       row.dataset.status = status;
       row.innerHTML = `<span class="col-dot"></span><span class="col-name">${col}</span><span class="col-state">${STATUS_LABEL[status] || status}</span>`;
+      list.appendChild(row);
+    }
+  }
+
+  // Replaces the live in-progress checklist with the final per-column outcome,
+  // since a column can finish "clean" (auto-fixed, nothing left to flag)
+  // without ever getting a final validate_column call to say so.
+  function finalizeChecklist(issuesByColumn) {
+    const list = document.getElementById('column-checklist');
+    list.innerHTML = '';
+    for (const col of Object.keys(lastColumns)) {
+      const count = issuesByColumn[col] || 0;
+      const status = count > 0 ? 'flagged' : 'clean';
+      const label = count > 0 ? `${count.toLocaleString()} flagged` : 'Clean';
+      const row = document.createElement('div');
+      row.className = 'col-row';
+      row.dataset.status = status;
+      row.innerHTML = `<span class="col-dot"></span><span class="col-name">${col}</span><span class="col-state">${label}</span>`;
       list.appendChild(row);
     }
   }
@@ -345,6 +386,24 @@
       flagged === 0
         ? 'No issues found — nothing needs manual review.'
         : `${flagged.toLocaleString()} row(s) were flagged for manual review — they were kept in the output, not deleted. See the error report for details.`;
+
+    finalizeChecklist(msg.issues_by_column || {});
+
+    const issuesList = document.getElementById('issues-list');
+    const issuesRows  = document.getElementById('issues-rows');
+    const topIssues = msg.top_issues || [];
+    if (topIssues.length) {
+      issuesRows.innerHTML = '';
+      for (const item of topIssues) {
+        const row = document.createElement('div');
+        row.className = 'issue-row';
+        row.innerHTML = `<span class="issue-count">${item.count.toLocaleString()}×</span><span>${item.column} — ${item.issue}</span>`;
+        issuesRows.appendChild(row);
+      }
+      issuesList.style.display = 'flex';
+    } else {
+      issuesList.style.display = 'none';
+    }
   }
 
   function setStatus(state) {
