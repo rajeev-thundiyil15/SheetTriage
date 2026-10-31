@@ -76,8 +76,10 @@ Open [http://localhost:8000](http://localhost:8000).
 
 ```bash
 uv run --with anthropic --with pandas --with pydantic --with python-dotenv \
-       main.py data/dirty_employees.csv schema/employees.json
+       main.py <path-to-your.csv> schema/employees.json
 ```
+
+Bring your own CSV, or write a schema for one under `schema/` (see the format below) and point the command at it.
 
 ---
 
@@ -94,12 +96,10 @@ schema-agent/
 ├── static/
 │   ├── home.html       # Landing page
 │   └── index.html      # Agent UI (upload, NL rules, real-time log, download)
-├── schema/
-│   ├── employees.json  # Example schema
-│   └── products.json   # Example schema
-└── data/
-    ├── dirty_employees.csv
-    └── dirty_products.csv
+└── schema/
+    ├── employees.json  # Example schema
+    ├── products.json   # Example schema
+    └── customers.json  # Example schema
 ```
 
 ---

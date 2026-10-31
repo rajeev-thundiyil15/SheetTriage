@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — Results</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --text:       #09090b;
+      --text-muted: #71717a;
+      --border:     #e4e4e7;
+      --bg:         #fafafa;
+      --surface:    #ffffff;
+      --accent:     #18181b;
+      --accent-hover: #3f3f46;
+      --green:      #16a34a;
+      --terminal-bg: #09090b;
+      --radius:     8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    nav.topnav {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; height: 52px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .nav-logo { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+    .nav-back {
+      font-size: 13px; color: var(--text-muted);
+      text-decoration: none; font-weight: 500;
+    }
+    .nav-back:hover { color: var(--text); }
+
+    main {
+      flex: 1; display: flex; justify-content: center;
+      padding: 24px 32px 48px;
+    }
+
+    .results-wrap { max-width: 760px; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+    .results-header { display: flex; align-items: baseline; justify-content: space-between; }
+    .results-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+
+    .log-panel {
+      background: var(--terminal-bg); border: 1px solid #27272a;
+      border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .log-header {
+      padding: 10px 16px; background: #18181b;
+      border-bottom: 1px solid #27272a;
+      display: flex; align-items: center; flex-shrink: 0;
+    }
+    .log-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: #52525b; font-weight: 500;
+    }
+
+    #status-badge {
+      display: none; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 20px; margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #status-badge.running { display:inline-block; background:rgba(251,191,36,.1); color:#fbbf24; animation:pulse 1.5s infinite; }
+    #status-badge.done    { display:inline-block; background:rgba(74,222,128,.1); color:#4ade80; }
+    #status-badge.error   { display:inline-block; background:rgba(248,113,113,.1); color:#f87171; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    .log-body {
+      flex: 1; overflow-y: auto; padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; line-height: 1.75; color: #e4e4e7;
+      min-height: 480px; max-height: 70vh;
+    }
+    .log-body::-webkit-scrollbar { width: 4px; }
+    .log-body::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+
+    .log-empty { color: #3f3f46; text-align: center; padding: 64px 20px; font-size: 12px; }
+
+    .log-iteration  { color: #3f3f46; margin: 12px 0 2px; }
+    .log-claude     { color: #818cf8; white-space: pre-wrap; word-break: break-word; }
+    .log-tool-call  { color: #38bdf8; }
+    .log-tool-result{ color: #3f3f46; }
+    .log-success    { color: #4ade80; }
+    .log-error-msg  { color: #f87171; }
+    .log-warn       { color: #fbbf24; }
+    .log-info       { color: #e4e4e7; }
+
+    .download-area {
+      padding: 12px 16px; background: #18181b;
+      border-top: 1px solid #27272a; display: none;
+      flex-direction: column; gap: 8px;
+    }
+    .download-area.show { display: flex; }
+    .dl-btn {
+      display: block; width: 100%; padding: 9px;
+      border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
+      text-align: center; text-decoration: none;
+      cursor: pointer; transition: background .15s;
+    }
+    #download-btn { background: #16a34a; color: white; }
+    #download-btn:hover { background: #15803d; }
+    #report-btn { background: #27272a; color: #a1a1aa; display: none; }
+    #report-btn:hover { background: #3f3f46; color: white; }
+
+    .new-job-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 14px;
+      text-decoration: none; transition: all .15s; align-self: flex-start;
+    }
+    .new-job-btn:hover { border-color: #a1a1aa; background: var(--bg); }
+
+    /* ── Progress checklist ── */
+    .progress-panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      display: none; flex-direction: column; gap: 10px;
+    }
+    .progress-panel.show { display: flex; }
+    .progress-stats {
+      font-size: 13px; color: var(--text-muted); font-weight: 500;
+    }
+    .progress-stats strong { color: var(--text); }
+    .column-checklist { display: flex; flex-direction: column; gap: 6px; }
+    .col-row {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; padding: 4px 0;
+    }
+    .col-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .col-row[data-status="pending"]  .col-dot { background: var(--border); }
+    .col-row[data-status="checking"] .col-dot { background: #fbbf24; animation: pulse 1.5s infinite; }
+    .col-row[data-status="clean"]    .col-dot { background: var(--green); }
+    .col-name { flex: 1; color: var(--text); }
+    .col-row[data-status="pending"]  .col-name { color: var(--text-muted); }
+    .col-state { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+    .col-row[data-status="clean"] .col-state { color: var(--green); }
+    .col-row[data-status="checking"] .col-state { color: #b45309; }
+
+    /* ── Summary banner ── */
+    .summary-banner {
+      display: none; background: #f0fdf4; border: 1px solid #bbf7d0;
+      border-radius: var(--radius); padding: 16px 18px;
+    }
+    .summary-banner.show { display: block; }
+    .summary-banner .headline {
+      font-size: 14px; font-weight: 600; color: #166534; margin-bottom: 4px;
+    }
+    .summary-banner .detail {
+      font-size: 13px; color: #15803d; line-height: 1.6;
+    }
+
+    .empty-state {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 40px 24px; text-align: center;
+    }
+    .empty-state p { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+
+    @media (max-width: 768px) {
+      main { padding: 16px; }
+      nav.topnav { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="nav-logo">SheetTriage</span>
+  <a href="/app" class="nav-back">&larr; Back to app</a>
+</nav>
+
+<main>
+  <div class="results-wrap">
+
+    <div id="no-job" class="empty-state" style="display:none">
+      <p>No job specified — start a new one to see results here.</p>
+      <a href="/app" class="new-job-btn">Start a new job</a>
+    </div>
+
+    <div id="job-view" style="display:none; flex-direction:column; gap:12px;">
+      <div class="results-header">
+        <span class="results-title">Agent Run</span>
+      </div>
+
+      <div class="progress-panel" id="progress-panel">
+        <div class="progress-stats" id="progress-stats"></div>
+        <div class="column-checklist" id="column-checklist"></div>
+      </div>
+
+      <div class="summary-banner" id="summary-banner">
+        <div class="headline" id="summary-headline"></div>
+        <div class="detail" id="summary-detail"></div>
+      </div>
+
+      <div class="log-panel">
+        <div class="log-header">
+          <span class="log-title">agent.log</span>
+          <span id="status-badge"></span>
+        </div>
+        <div class="log-body" id="log-body">
+          <div class="log-empty">Connecting to job...</div>
+        </div>
+        <div class="download-area" id="download-area">
+          <a id="download-btn" class="dl-btn">Download Output CSV</a>
+          <a id="report-btn" class="dl-btn">Download Error Report</a>
+        </div>
+      </div>
+
+      <a href="/app" class="new-job-btn">&larr; Run another file</a>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const jobId = params.get('job');
+
+  const logBody      = document.getElementById('log-body');
+  const statusBadge  = document.getElementById('status-badge');
+  const downloadArea = document.getElementById('download-area');
+  const downloadBtn  = document.getElementById('download-btn');
+
+  if (!jobId) {
+    document.getElementById('no-job').style.display = 'block';
+  } else {
+    document.getElementById('job-view').style.display = 'flex';
+    logBody.innerHTML = '';
+    connect(jobId);
+  }
+
+  function appendLog(msg) {
+    const el = document.createElement('div');
+    switch (msg.type) {
+      case 'start':
+        el.className = 'log-info';
+        el.textContent = '─── agent started ───────────────────';
+        break;
+      case 'iteration':
+        el.className = 'log-iteration';
+        el.textContent = `\n─── step ${msg.n} ───`;
+        break;
+      case 'claude_text':
+        el.className = 'log-claude';
+        el.textContent = 'agent › ' + msg.text;
+        break;
+      case 'tool_call':
+        el.className = 'log-tool-call';
+        el.textContent = `  > ${msg.input_summary}`;
+        break;
+      case 'tool_result':
+        el.className = 'log-tool-result';
+        el.textContent = `  < ${msg.preview}`;
+        break;
+      case 'finish':
+        el.className = 'log-success';
+        el.textContent = '\n─── agent finished ──────────────────';
+        break;
+      case 'warning':
+        el.className = 'log-warn';
+        el.textContent = 'warn: ' + msg.message;
+        break;
+      case 'progress':
+        renderProgress(msg);
+        return;
+      case 'summary':
+        renderSummary(msg);
+        return;
+      case 'done':
+        setStatus('done');
+        if (msg.download_url) {
+          downloadBtn.href = msg.download_url;
+          downloadBtn.setAttribute('download', 'output.csv');
+          downloadArea.classList.add('show');
+        }
+        if (msg.report_url) {
+          const rb = document.getElementById('report-btn');
+          rb.href = msg.report_url;
+          rb.setAttribute('download', 'error_report.csv');
+          rb.style.display = 'block';
+        }
+        return;
+      case 'error':
+        el.className = 'log-error-msg';
+        el.textContent = 'error: ' + msg.message;
+        setStatus('error');
+        break;
+      default:
+        el.textContent = JSON.stringify(msg);
+    }
+    logBody.appendChild(el);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  const STATUS_LABEL = { pending: 'Not started', checking: 'Needs fixes', clean: 'Clean' };
+
+  function renderProgress(msg) {
+    const panel = document.getElementById('progress-panel');
+    panel.classList.add('show');
+
+    const statsEl = document.getElementById('progress-stats');
+    statsEl.innerHTML = `<strong>${msg.fixed || 0}</strong> fixed &nbsp;·&nbsp; <strong>${msg.flagged || 0}</strong> flagged for review`;
+
+    const list = document.getElementById('column-checklist');
+    list.innerHTML = '';
+    for (const [col, status] of Object.entries(msg.columns || {})) {
+      const row = document.createElement('div');
+      row.className = 'col-row';
+      row.dataset.status = status;
+      row.innerHTML = `<span class="col-dot"></span><span class="col-name">${col}</span><span class="col-state">${STATUS_LABEL[status] || status}</span>`;
+      list.appendChild(row);
+    }
+  }
+
+  function renderSummary(msg) {
+    const banner = document.getElementById('summary-banner');
+    banner.classList.add('show');
+    const total = msg.total_input_rows || 0;
+    const clean = msg.clean_rows || 0;
+    const flagged = msg.rows_with_errors || 0;
+    document.getElementById('summary-headline').textContent =
+      flagged === 0
+        ? `All ${total.toLocaleString()} rows are clean.`
+        : `${clean.toLocaleString()} of ${total.toLocaleString()} rows are clean.`;
+    document.getElementById('summary-detail').textContent =
+      flagged === 0
+        ? 'No issues found — nothing needs manual review.'
+        : `${flagged.toLocaleString()} row(s) were flagged for manual review — they were kept in the output, not deleted. See the error report for details.`;
+  }
+
+  function setStatus(state) {
+    statusBadge.className = state;
+    statusBadge.textContent = { running: 'running', done: 'done', error: 'error' }[state] || state;
+  }
+
+  function connect(id) {
+    setStatus('running');
+    const es = new EventSource(`/stream/${id}`);
+    es.onmessage = e => {
+      const msg = JSON.parse(e.data);
+      appendLog(msg);
+      if (msg.type === 'done' || msg.type === 'error') es.close();
+    };
+    es.onerror = () => {
+      appendLog({ type: 'error', message: 'Connection to server lost.' });
+      es.close();
+    };
+  }
+</script>
+
+</body>
+</html>

@@ -8,9 +8,11 @@ Design principle: never silently delete data.
 """
 from __future__ import annotations
 
+import csv
 import re
 import json
 import pandas as pd
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +55,13 @@ def inspect_data() -> str:
 # ---------------------------------------------------------------------------
 
 def validate_column(column_name: str, schema: DataSchema) -> str:
+    """
+    Returns violations grouped by the exact issue text, each with the full list of
+    row indices that have it — e.g. one group for "cannot convert 'sixty five' to
+    float" covering 40 rows, instead of 40 near-identical entries. Keeps the payload
+    small on files with many repeated errors (the common case) without ever dropping
+    a row: every violating row index appears in exactly one group.
+    """
     df: pd.DataFrame = _state["df"]
 
     if column_name not in df.columns:
@@ -61,46 +70,61 @@ def validate_column(column_name: str, schema: DataSchema) -> str:
         return json.dumps({"error": f"Column '{column_name}' not in schema"})
 
     col_schema = schema.columns[column_name]
-    violations: list[dict] = []
+    flat: list[tuple[int, str]] = []  # (row_index, issue_text)
 
     for idx, val in df[column_name].items():
         # Skip rows already marked for this column
         if _already_marked(idx, column_name):
             continue
 
-        issues = []
-
         if pd.isna(val):
             if not col_schema.nullable:
-                issues.append("null value not allowed")
-            if issues:
-                violations.append({"row": int(idx), "value": None, "issues": issues})
+                flat.append((int(idx), "null value not allowed"))
             continue
 
         coerced = _try_coerce(val, col_schema.dtype)
         if coerced is None:
-            issues.append(f"cannot convert '{val}' to {col_schema.dtype}")
+            flat.append((int(idx), f"cannot convert '{val}' to {col_schema.dtype}"))
 
         if coerced is not None and col_schema.dtype in ("int", "float"):
             if col_schema.min_value is not None and coerced < col_schema.min_value:
-                issues.append(f"value {coerced} is below min {col_schema.min_value}")
+                flat.append((int(idx), f"value {coerced} is below min {col_schema.min_value}"))
             if col_schema.max_value is not None and coerced > col_schema.max_value:
-                issues.append(f"value {coerced} is above max {col_schema.max_value}")
+                flat.append((int(idx), f"value {coerced} is above max {col_schema.max_value}"))
 
         if col_schema.allowed_values and str(val) not in col_schema.allowed_values:
-            issues.append(f"'{val}' not in allowed values {col_schema.allowed_values}")
+            flat.append((int(idx), f"'{val}' not in allowed values {col_schema.allowed_values}"))
 
         if col_schema.pattern and not re.fullmatch(col_schema.pattern, str(val)):
-            issues.append(f"'{val}' does not match pattern {col_schema.pattern}")
+            flat.append((int(idx), f"'{val}' does not match pattern {col_schema.pattern}"))
 
-        if issues:
-            violations.append({"row": int(idx), "value": str(val), "issues": issues})
+    if not flat:
+        return json.dumps({"column": column_name, "total_violations": 0, "groups": []})
 
-    return json.dumps({
+    groups: dict[str, dict] = {}
+    for row_idx, issue in flat:
+        g = groups.setdefault(issue, {"issue": issue, "count": 0, "rows": []})
+        g["count"] += 1
+        g["rows"].append(row_idx)
+
+    group_list = sorted(groups.values(), key=lambda g: -g["count"])
+
+    MAX_GROUPS_SHOWN = 40
+    result = {
         "column": column_name,
-        "total_violations": len(violations),
-        "violations": violations,
-    }, indent=2)
+        "total_violations": len(flat),
+        "distinct_issue_groups": len(group_list),
+        "groups": group_list[:MAX_GROUPS_SHOWN],
+    }
+    if len(group_list) > MAX_GROUPS_SHOWN:
+        result["note"] = (
+            f"Showing the {MAX_GROUPS_SHOWN} most common of {len(group_list)} distinct issue "
+            "groups. After fixing or marking these, call validate_column again on this column — "
+            "already-handled rows are skipped automatically, so the next-most-common remaining "
+            "groups will surface."
+        )
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +172,33 @@ def mark_row_error(row_index: int, column_name: str, issue: str, id_column: str 
         "issue": issue,
         "note": "Row kept in dataset — flagged in _errors column and report.",
     })
+
+
+# ---------------------------------------------------------------------------
+# Bulk marking — use this for large files instead of mark_row_error N times
+# ---------------------------------------------------------------------------
+
+def bulk_mark_errors(violations: list[dict]) -> str:
+    """
+    Mark multiple rows in one call.
+    violations: list of {row_index, column_name, issue, id_column (optional)}
+    """
+    marked, errors = 0, []
+    for v in violations:
+        try:
+            mark_row_error(
+                int(v["row_index"]),
+                v["column_name"],
+                v["issue"],
+                v.get("id_column", ""),
+            )
+            marked += 1
+        except Exception as exc:
+            errors.append(str(exc))
+    result = {"marked": marked}
+    if errors:
+        result["errors"] = errors[:5]
+    return json.dumps(result)
 
 
 # ---------------------------------------------------------------------------
@@ -250,15 +301,32 @@ def save_with_report(
 
     # Report is always the full error log regardless of mode
     log = _state["error_log"]
-    if log:
-        report_df = pd.DataFrame(log, columns=["row_id", "column", "original_value", "error", "row_index"])
-        report_df = report_df.drop(columns=["row_index"])
-        report_df.insert(0, "action_needed", "Review & correct manually")
-    else:
-        report_df = pd.DataFrame(columns=["row_id", "column", "original_value", "error", "action_needed"])
-
     Path(report_path).parent.mkdir(parents=True, exist_ok=True)
-    report_df.to_csv(report_path, index=False)
+
+    with open(report_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+
+        if log:
+            # ── Summary block ──
+            col_counts = Counter(e["column"] for e in log)
+            affected_rows = len(set(e["row_index"] for e in log))
+
+            w.writerow(["SUMMARY"])
+            w.writerow(["column", "error_count"])
+            for col, count in sorted(col_counts.items(), key=lambda x: -x[1]):
+                w.writerow([col, count])
+            w.writerow([])
+            w.writerow(["total_errors", len(log)])
+            w.writerow(["rows_affected", affected_rows])
+            w.writerow([])
+
+            # ── Detail block ──
+            w.writerow(["DETAILS"])
+            w.writerow(["row_id", "column", "original_value", "error", "action_needed"])
+            for e in log:
+                w.writerow([e["row_id"], e["column"], e["original_value"], e["error"], "Review & correct manually"])
+        else:
+            w.writerow(["No errors found."])
 
     return json.dumps({
         "csv_saved": csv_path,

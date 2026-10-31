@@ -19,7 +19,6 @@
       --accent-hover: #3f3f46;
       --blue:       #2563eb;
       --green:      #16a34a;
-      --terminal-bg: #09090b;
       --radius:     8px;
     }
 
@@ -69,22 +68,21 @@
     .page { display: none; }
     .page.active { display: block; }
 
-    /* ── Agent tab layout ── */
+    /* ── Agent tab layout: single-column flow ── */
     #page-agent {
-      display: none; flex: 1;
-      grid-template-columns: minmax(0, 420px) 1fr;
-      gap: 20px; padding: 24px 32px;
-      max-width: 1300px; width: 100%; margin: 0 auto;
+      display: none;
+      max-width: 620px; width: 100%; margin: 0 auto;
+      padding: 32px 32px 64px;
     }
-    #page-agent.active { display: grid; }
+    #page-agent.active { display: block; }
 
     /* ── Card ── */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px;
-      display: flex; flex-direction: column; gap: 20px;
+      padding: 24px;
+      display: flex; flex-direction: column; gap: 24px;
     }
 
     /* ── Field labels ── */
@@ -144,17 +142,30 @@
     textarea#schema-input { font-family: 'JetBrains Mono', monospace; font-size: 12px; min-height: 200px; }
     textarea#nl-rules { min-height: 72px; }
 
-    /* ── Infer button ── */
-    #infer-btn {
+    .or-divider {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: .05em; margin: 12px 0;
+    }
+    .or-divider::before, .or-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    /* ── Infer / upload-schema buttons ── */
+    #infer-btn, .btn-secondary {
       width: 100%; padding: 8px 12px;
       background: var(--bg); border: 1px solid var(--border);
       border-radius: var(--radius);
       font-size: 13px; font-weight: 500; color: var(--text);
       cursor: pointer; transition: all .15s;
       display: flex; align-items: center; justify-content: center;
+      position: relative;
     }
-    #infer-btn:hover:not(:disabled) { border-color: #a1a1aa; background: #f4f4f5; }
+    #infer-btn:hover:not(:disabled), .btn-secondary:hover { border-color: #a1a1aa; background: #f4f4f5; }
     #infer-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-secondary input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    #schema-file-name { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 
     /* ── Mode selector ── */
     .mode-group { display: flex; flex-direction: column; gap: 6px; }
@@ -199,68 +210,6 @@
     }
     #run-btn.running .spinner { display: block; }
 
-    /* ── Terminal ── */
-    .log-panel {
-      background: var(--terminal-bg); border: 1px solid #27272a;
-      border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden;
-    }
-    .log-header {
-      padding: 10px 16px; background: #18181b;
-      border-bottom: 1px solid #27272a;
-      display: flex; align-items: center; flex-shrink: 0;
-    }
-    .log-title {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px; color: #52525b; font-weight: 500;
-    }
-
-    #status-badge {
-      display: none; font-size: 11px; font-weight: 600;
-      padding: 2px 8px; border-radius: 20px; margin-left: auto;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    #status-badge.running { display:inline-block; background:rgba(251,191,36,.1); color:#fbbf24; animation:pulse 1.5s infinite; }
-    #status-badge.done    { display:inline-block; background:rgba(74,222,128,.1); color:#4ade80; }
-    #status-badge.error   { display:inline-block; background:rgba(248,113,113,.1); color:#f87171; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-
-    .log-body {
-      flex: 1; overflow-y: auto; padding: 16px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px; line-height: 1.75; color: #e4e4e7;
-      min-height: 480px;
-    }
-    .log-body::-webkit-scrollbar { width: 4px; }
-    .log-body::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
-
-    .log-empty { color: #3f3f46; text-align: center; padding: 64px 20px; font-size: 12px; }
-
-    .log-iteration  { color: #3f3f46; margin: 12px 0 2px; }
-    .log-claude     { color: #818cf8; white-space: pre-wrap; word-break: break-word; }
-    .log-tool-call  { color: #38bdf8; }
-    .log-tool-result{ color: #3f3f46; }
-    .log-success    { color: #4ade80; }
-    .log-error-msg  { color: #f87171; }
-    .log-warn       { color: #fbbf24; }
-    .log-info       { color: #e4e4e7; }
-
-    .download-area {
-      padding: 12px 16px; background: #18181b;
-      border-top: 1px solid #27272a; display: none;
-      flex-direction: column; gap: 8px;
-    }
-    .download-area.show { display: flex; }
-    .dl-btn {
-      display: block; width: 100%; padding: 9px;
-      border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
-      text-align: center; text-decoration: none;
-      cursor: pointer; transition: background .15s;
-    }
-    #download-btn { background: #16a34a; color: white; }
-    #download-btn:hover { background: #15803d; }
-    #report-btn { background: #27272a; color: #a1a1aa; display: none; }
-    #report-btn:hover { background: #3f3f46; color: white; }
-
     /* ── Guide tab ── */
     #page-guide {
       display: none; max-width: 800px;
@@ -288,7 +237,7 @@
     .step-text { font-size: 14px; color: #52525b; line-height: 1.7; }
 
     .code-block {
-      background: var(--terminal-bg); color: #e4e4e7;
+      background: #09090b; color: #e4e4e7;
       border: 1px solid #27272a; border-radius: var(--radius);
       padding: 16px 18px;
       font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7;
@@ -316,7 +265,7 @@
     }
 
     @media (max-width: 768px) {
-      #page-agent { grid-template-columns: 1fr; padding: 16px; }
+      #page-agent { padding: 16px; }
       .tabs, nav.topnav { padding: 0 16px; }
       #page-guide { padding: 0 16px 48px; }
     }
@@ -337,7 +286,6 @@
 <!-- ══ AGENT TAB ══ -->
 <div id="page-agent" class="page active">
 
-  <!-- Left: Config -->
   <div class="card">
 
     <!-- Upload -->
@@ -364,11 +312,20 @@
     <!-- Rules + Schema -->
     <div>
       <div class="field-label">2 — Define Rules</div>
-      <p class="hint" style="margin-bottom:8px">Describe your rules in plain English, then click Generate — or edit the JSON directly.</p>
+      <p class="hint" style="margin-bottom:8px">Describe your rules in plain English, then click Generate.</p>
       <textarea id="nl-rules" placeholder="e.g. price must be positive, email is required and must be valid, category must be Electronics or Sports..."></textarea>
       <button id="infer-btn" onclick="generateSchema()" style="margin:8px 0;">
         <span id="infer-text">Generate Schema from Rules</span>
       </button>
+
+      <div class="or-divider">or provide a schema directly</div>
+
+      <button class="btn-secondary" style="margin-bottom:10px;">
+        <input type="file" id="schema-file" accept=".json">
+        <span>Upload Schema JSON File</span>
+      </button>
+      <div id="schema-file-name"></div>
+
       <div class="field-label" style="margin-bottom:6px; margin-top:4px;">
         Schema JSON <span style="font-weight:400; text-transform:none; font-size:11px; color:var(--text-muted);">— editable</span>
       </div>
@@ -430,21 +387,6 @@
 
   </div>
 
-  <!-- Right: Terminal -->
-  <div class="log-panel">
-    <div class="log-header">
-      <span class="log-title">agent.log</span>
-      <span id="status-badge"></span>
-    </div>
-    <div class="log-body" id="log-body">
-      <div class="log-empty">Agent output will appear here.</div>
-    </div>
-    <div class="download-area" id="download-area">
-      <a id="download-btn" class="dl-btn">Download Output CSV</a>
-      <a id="report-btn" class="dl-btn">Download Error Report</a>
-    </div>
-  </div>
-
 </div><!-- end #page-agent -->
 
 
@@ -454,9 +396,9 @@
   <div class="guide-section" style="margin-top:32px">
     <h2>Quick Start</h2>
     <div class="step-row"><div class="step-num-sm">1</div><div class="step-text">Prepare your CSV — any spreadsheet exported as CSV works.</div></div>
-    <div class="step-row"><div class="step-num-sm">2</div><div class="step-text">Describe your rules in plain English or write a schema JSON.</div></div>
+    <div class="step-row"><div class="step-num-sm">2</div><div class="step-text">Describe your rules in plain English, upload a schema JSON file, or write one directly.</div></div>
     <div class="step-row"><div class="step-num-sm">3</div><div class="step-text">Select a mode, then click <strong>Run Agent</strong>.</div></div>
-    <div class="step-row"><div class="step-num-sm">4</div><div class="step-text">Watch the agent work in real time. Download the output when done.</div></div>
+    <div class="step-row"><div class="step-num-sm">4</div><div class="step-text">You'll be taken to a results page where you can watch the agent work in real time and download the output when done.</div></div>
   </div>
 
   <hr class="guide-divider">
@@ -479,7 +421,7 @@
 
   <div class="guide-section">
     <h2>Schema JSON Format</h2>
-    <p>Each key under <code>"columns"</code> must match a column header in your CSV. Only defined columns are validated — extras are ignored.</p>
+    <p>Each key under <code>"columns"</code> must match a column header in your CSV. Only defined columns are validated — extras are ignored. You can type this directly, upload it as a <code>.json</code> file, or have it generated from a plain-English description.</p>
     <div class="code-block"><span class="comment">// Full example with all options</span>
 {
   <span class="key">"name"</span>: <span class="string">"employees"</span>,
@@ -560,16 +502,6 @@
 
 
 <script>
-  // Pre-select mode from URL param
-  (function() {
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode');
-    if (mode) {
-      const radio = document.querySelector(`input[name="mode"][value="${mode}"]`);
-      if (radio) radio.checked = true;
-    }
-  })();
-
   function switchTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
       t.classList.toggle('active', ['agent','guide'][i] === name);
@@ -599,95 +531,59 @@
     selectedFile = f;
     fileNameEl.textContent = f.name;
     fileBadge.classList.add('show');
+
+    // Remove any previous size warning
+    const prev = document.getElementById('size-warning');
+    if (prev) prev.remove();
+
     const reader = new FileReader();
     reader.onload = e => {
-      const firstLine = e.target.result.split(/\r?\n/)[0];
-      const headers = firstLine.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const rowCount = lines.length - 1; // exclude header
+      const colCount = headers.length;
+
       document.getElementById('columns-list').textContent = headers.join(', ');
       document.getElementById('columns-detected').style.display = 'block';
+
+      // Show warning if file exceeds recommended limits
+      if (rowCount > 1000 || colCount > 15) {
+        const warn = document.createElement('div');
+        warn.id = 'size-warning';
+        warn.style.cssText = 'margin-top:8px; padding:10px 12px; background:#fefce8; border:1px solid #fde047; border-radius:8px; font-size:12px; color:#713f12; line-height:1.6;';
+        const parts = [];
+        if (rowCount > 1000) parts.push(`${rowCount.toLocaleString()} rows (recommended: under 1,000)`);
+        if (colCount > 15)   parts.push(`${colCount} columns (recommended: under 15)`);
+        warn.textContent = `Large file detected — ${parts.join(' and ')}. The agent will still run but may take several minutes and cost more to process.`;
+        document.getElementById('drop-zone').parentElement.appendChild(warn);
+      }
     };
     reader.readAsText(f);
   }
 
-  // Log rendering
-  const logBody      = document.getElementById('log-body');
-  const statusBadge  = document.getElementById('status-badge');
-  const downloadArea = document.getElementById('download-area');
-  const downloadBtn  = document.getElementById('download-btn');
-
-  function clearLog() { logBody.innerHTML = ''; }
-
-  function appendLog(msg) {
-    const el = document.createElement('div');
-    switch (msg.type) {
-      case 'start':
-        el.className = 'log-info';
-        el.textContent = '─── agent started ───────────────────';
-        break;
-      case 'iteration':
-        el.className = 'log-iteration';
-        el.textContent = `\n─── iteration ${msg.n} ───`;
-        break;
-      case 'claude_text':
-        el.className = 'log-claude';
-        el.textContent = 'claude › ' + msg.text;
-        break;
-      case 'tool_call':
-        el.className = 'log-tool-call';
-        el.textContent = `  > ${msg.name}(${msg.input_summary})`;
-        break;
-      case 'tool_result':
-        el.className = 'log-tool-result';
-        el.textContent = `  < ${msg.preview}`;
-        break;
-      case 'finish':
-        el.className = 'log-success';
-        el.textContent = '\n─── agent finished ──────────────────';
-        break;
-      case 'warning':
-        el.className = 'log-warn';
-        el.textContent = 'warn: ' + msg.message;
-        break;
-      case 'done':
-        setStatus('done');
-        if (msg.download_url) {
-          downloadBtn.href = msg.download_url;
-          downloadBtn.setAttribute('download', 'output.csv');
-          downloadArea.classList.add('show');
-        }
-        if (msg.report_url) {
-          const rb = document.getElementById('report-btn');
-          rb.href = msg.report_url;
-          rb.setAttribute('download', 'error_report.csv');
-          rb.style.display = 'block';
-        }
-        return;
-      case 'error':
-        el.className = 'log-error-msg';
-        el.textContent = 'error: ' + msg.message;
-        setStatus('error');
-        setRunning(false);
-        break;
-      default:
-        el.textContent = JSON.stringify(msg);
-    }
-    logBody.appendChild(el);
-    logBody.scrollTop = logBody.scrollHeight;
-  }
-
-  function setStatus(state) {
-    statusBadge.className = state;
-    statusBadge.textContent = { running: 'running', done: 'done', error: 'error' }[state] || state;
-    if (state !== 'running') setRunning(false);
-  }
-
-  function setRunning(running) {
-    const btn = document.getElementById('run-btn');
-    btn.disabled = running;
-    btn.classList.toggle('running', running);
-    document.getElementById('btn-text').textContent = running ? 'Running...' : 'Run Agent';
-    if (running) { statusBadge.className = 'running'; statusBadge.textContent = 'running'; }
-  }
+  // Schema file upload — reads a .json file straight into the schema textarea
+  document.getElementById('schema-file').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const nameEl = document.getElementById('schema-file-name');
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const ta = document.getElementById('schema-input');
+        ta.value = JSON.stringify(parsed, null, 2);
+        ta.style.borderColor = '#a1a1aa';
+        setTimeout(() => { ta.style.borderColor = ''; }, 1000);
+        nameEl.textContent = `Loaded: ${f.name}`;
+        nameEl.style.color = 'var(--text-muted)';
+      } catch (err) {
+        nameEl.textContent = `Could not parse ${f.name}: ${err.message}`;
+        nameEl.style.color = '#dc2626';
+      }
+    };
+    reader.readAsText(f);
+  });
 
   async function generateSchema() {
     if (!selectedFile) { alert('Upload a CSV first so we can read the column names.'); return; }
@@ -724,10 +620,11 @@
     const schemaText = document.getElementById('schema-input').value.trim();
     try { JSON.parse(schemaText); } catch(e) { alert('Schema JSON is invalid:\n' + e.message); return; }
 
-    clearLog();
-    downloadArea.classList.remove('show');
-    document.getElementById('report-btn').style.display = 'none';
-    setRunning(true);
+    const btn  = document.getElementById('run-btn');
+    const btnText = document.getElementById('btn-text');
+    btn.disabled = true;
+    btn.classList.add('running');
+    btnText.textContent = 'Starting...';
 
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const form = new FormData();
@@ -735,27 +632,17 @@
     form.append('schema_json', schemaText);
     form.append('mode', mode);
 
-    let jobId;
     try {
       const res = await fetch('/clean', { method: 'POST', body: form });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Server error'); }
-      jobId = (await res.json()).job_id;
+      const jobId = (await res.json()).job_id;
+      window.location.href = `/results?job=${jobId}`;
     } catch(e) {
-      appendLog({ type: 'error', message: e.message });
-      setRunning(false);
-      return;
+      alert('Could not start job:\n' + e.message);
+      btn.disabled = false;
+      btn.classList.remove('running');
+      btnText.textContent = 'Run Agent';
     }
-
-    const es = new EventSource(`/stream/${jobId}`);
-    es.onmessage = e => {
-      const msg = JSON.parse(e.data);
-      appendLog(msg);
-      if (msg.type === 'done' || msg.type === 'error') es.close();
-    };
-    es.onerror = () => {
-      appendLog({ type: 'error', message: 'Connection to server lost.' });
-      es.close(); setRunning(false);
-    };
   }
 </script>
 
