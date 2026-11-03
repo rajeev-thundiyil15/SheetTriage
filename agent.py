@@ -27,6 +27,8 @@ def derive_report_path(output_path: str) -> str:
     return output_path + "_report.csv"
 
 
+MAX_SAVE_REMINDERS = 2
+
 TOOL_DEFINITIONS = [
     {
         "name": "inspect_data",
@@ -44,9 +46,8 @@ TOOL_DEFINITIONS = [
             "'rows' list of row indices with that issue. A typo repeated 40 times is "
             "one group with 40 rows, not 40 separate entries. 'total_violations' is "
             "the true total across all groups. When fixing or marking, use each "
-            "group's full 'rows' list — never assume rows outside it are clean, and "
-            "never skip rows because a group looks large; bulk_mark_errors takes a "
-            "list, so pass all of a group's rows in one call."
+            "group's full 'rows' list — never assume rows outside it are clean. To mark "
+            "rows, use mark_remaining_violations, which works the rows out itself."
         ),
         "input_schema": {
             "type": "object",
@@ -139,6 +140,24 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "mark_remaining_violations",
+        "description": (
+            "Mark every row that still violates the schema in one column, keeping the rows "
+            "in the dataset. The rows are worked out for you, so this handles any number of "
+            "them: never list row indices for this. Fix what can be fixed first, then call "
+            "this for what is left. Pass only_issue to mark just one validate_column group."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "column_name": {"type": "string", "description": "Column to mark."},
+                "only_issue": {"type": "string", "description": "Optional: the exact 'issue' text of one group."},
+                "id_column": {"type": "string", "description": "Column that identifies a row in the report."},
+            },
+            "required": ["column_name"],
+        },
+    },
+    {
         "name": "save_with_report",
         "description": (
             "Save two files: "
@@ -185,6 +204,8 @@ def _friendly_call(name: str, inputs: dict) -> str:
     if name == "bulk_mark_errors":
         n = len(inputs.get("violations", []))
         return f"Flagging {n} row(s) that can't be safely auto-fixed"
+    if name == "mark_remaining_violations":
+        return f"Flagging the remaining problems in '{inputs.get('column_name')}'"
     if name == "save_with_report":
         return "Saving the cleaned file and error report"
     return name
@@ -235,6 +256,10 @@ def _friendly_result(name: str, result_str: str) -> str:
         n = data.get("marked", 0)
         return f"Flagged {n:,} row(s) for review"
 
+    if name == "mark_remaining_violations":
+        n = data.get("marked", 0)
+        return f"Flagged {n:,} problem(s) in '{data.get('column')}' for review"
+
     if name == "save_with_report":
         clean = data.get("clean_rows", 0)
         flagged = data.get("rows_with_errors", 0)
@@ -257,6 +282,13 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
             return t.fill_null(inputs["column_name"], inputs["fill_value"])
         if name == "bulk_mark_errors":
             return t.bulk_mark_errors(inputs["violations"])
+        if name == "mark_remaining_violations":
+            return t.mark_remaining_violations(
+                inputs["column_name"],
+                schema,
+                inputs.get("only_issue", ""),
+                inputs.get("id_column", ""),
+            )
         if name == "save_with_report":
             return t.save_with_report(
                 inputs["csv_path"],
@@ -322,7 +354,7 @@ MODE: Audit Only — inspect and report, do NOT modify any data.
 WORKFLOW:
 1. Call inspect_data.
 2. Call validate_column for every column.
-3. For EVERY violation, call mark_row_error — record it exactly as found.
+3. For every column with violations, call mark_remaining_violations — record them exactly as found.
    Do NOT call fix_dtype, fix_allowed_values, or fill_null under any circumstances.
 4. After marking a column's violations, call validate_column on it one more time to
    confirm 0 remain — save_with_report will reject the save otherwise.
@@ -332,7 +364,7 @@ WORKFLOW:
    - id_column= column that best identifies a row (e.g. "product_id")
    - exclude_error_rows=false (keep all rows, just annotate them)
 
-Be brief. One sentence of reasoning per step. When marking unfixable violations, always use bulk_mark_errors to handle all rows for a column in a single call — never call mark_row_error in a loop.
+Be brief. One sentence of reasoning per step. Always mark with mark_remaining_violations, whatever the row count. Never list row indices.
 """
     elif mode == "strict":
         system_prompt = _base + f"""
@@ -344,7 +376,7 @@ WORKFLOW:
 3. For each violation:
    - Obvious typo/casing in allowed_values → fix_allowed_values
    - Wrong dtype that is clearly readable (e.g. a number stored as text) → fix_dtype, then re-validate
-   - Anything ambiguous or unrecoverable → mark_row_error
+   - Anything ambiguous or unrecoverable → mark_remaining_violations, after the fixes
    - Null in a nullable field → leave it alone
 4. After fixing or marking a column's violations, call validate_column on it one more
    time to confirm 0 remain — save_with_report will reject the save otherwise.
@@ -354,7 +386,7 @@ WORKFLOW:
    - id_column= column that best identifies a row (e.g. "product_id")
    - exclude_error_rows=true  ← this removes flagged rows from the output CSV
 
-Be brief. One sentence of reasoning per step. When marking unfixable violations, always use bulk_mark_errors to handle all rows for a column in a single call — never call mark_row_error in a loop.
+Be brief. One sentence of reasoning per step. Always mark with mark_remaining_violations, whatever the row count. Never list row indices.
 """
     else:  # "clean" — default
         system_prompt = _base + f"""
@@ -366,7 +398,7 @@ WORKFLOW:
 3. For each violation:
    - Obvious typo/casing in allowed_values → fix_allowed_values
    - Wrong dtype that is clearly readable → fix_dtype, then re-validate
-   - Unrecoverable value, unknown correct value, unfixable null → mark_row_error (row is kept)
+   - Unrecoverable value, unknown correct value, unfixable null → mark_remaining_violations, after the fixes (rows are kept)
    - Null in a nullable field → leave it alone
 4. After fixing or marking a column's violations, call validate_column on it one more
    time to confirm 0 remain — save_with_report will reject the save otherwise.
@@ -376,7 +408,7 @@ WORKFLOW:
    - id_column= column that best identifies a row (e.g. "product_id")
    - exclude_error_rows=false (keep all rows)
 
-Be brief. One sentence of reasoning per step. When marking unfixable violations, always use bulk_mark_errors to handle all rows for a column in a single call — never call mark_row_error in a loop.
+Be brief. One sentence of reasoning per step. Always mark with mark_remaining_violations, whatever the row count. Never list row indices.
 """
 
     messages: list[dict] = [
@@ -385,6 +417,8 @@ Be brief. One sentence of reasoning per step. When marking unfixable violations,
 
     column_status: dict[str, str] = {c: "pending" for c in schema.columns}
     stats = {"fixed": 0, "flagged": 0}
+    saved = False
+    save_reminders = 0
 
     def _emit_progress() -> None:
         _log({"type": "progress", "columns": dict(column_status), **stats})
@@ -447,10 +481,11 @@ Be brief. One sentence of reasoning per step. When marking unfixable violations,
                 elif tb.name == "fill_null" and isinstance(parsed, dict):
                     stats["fixed"] += parsed.get("affected", 0)
                     _emit_progress()
-                elif tb.name == "bulk_mark_errors" and isinstance(parsed, dict):
+                elif tb.name in ("bulk_mark_errors", "mark_remaining_violations") and isinstance(parsed, dict):
                     stats["flagged"] += parsed.get("marked", 0)
                     _emit_progress()
                 elif tb.name == "save_with_report" and isinstance(parsed, dict) and "error" not in parsed:
+                    saved = True
                     _log({"type": "summary", **parsed})
 
                 tool_results.append({
@@ -464,9 +499,24 @@ Be brief. One sentence of reasoning per step. When marking unfixable violations,
             continue
 
         if response.stop_reason == "end_turn":
-            _log({"type": "finish"})
+            if not saved and save_reminders < MAX_SAVE_REMINDERS:
+                save_reminders += 1
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "user", "content": (
+                    "Nothing has been saved yet, so the job is not finished. Use "
+                    "mark_remaining_violations for any column that still has violations, "
+                    "validate each one again, then call save_with_report."
+                )})
+                continue
+            if saved:
+                _log({"type": "finish"})
             break
     else:
         _log({"type": "warning", "message": f"Reached max_iterations ({max_iterations})."})
+
+    if not saved:
+        raise RuntimeError(
+            "The agent stopped before saving, so no file was produced. Try again, or try a smaller file."
+        )
 
     return t.get_dataframe()

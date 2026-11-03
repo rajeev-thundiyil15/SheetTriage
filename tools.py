@@ -71,34 +71,7 @@ def validate_column(column_name: str, schema: DataSchema) -> str:
     if column_name not in schema.columns:
         return json.dumps({"error": f"Column '{column_name}' not in schema"})
 
-    col_schema = schema.columns[column_name]
-    flat: list[tuple[int, str]] = []  # (row_index, issue_text)
-
-    for idx, val in df[column_name].items():
-        # Skip rows already marked for this column
-        if _already_marked(idx, column_name):
-            continue
-
-        if pd.isna(val):
-            if not col_schema.nullable:
-                flat.append((int(idx), "null value not allowed"))
-            continue
-
-        coerced = _try_coerce(val, col_schema.dtype)
-        if coerced is None:
-            flat.append((int(idx), f"cannot convert '{val}' to {col_schema.dtype}"))
-
-        if coerced is not None and col_schema.dtype in ("int", "float"):
-            if col_schema.min_value is not None and coerced < col_schema.min_value:
-                flat.append((int(idx), f"value {coerced} is below min {col_schema.min_value}"))
-            if col_schema.max_value is not None and coerced > col_schema.max_value:
-                flat.append((int(idx), f"value {coerced} is above max {col_schema.max_value}"))
-
-        if col_schema.allowed_values and str(val) not in col_schema.allowed_values:
-            flat.append((int(idx), f"'{val}' not in allowed values {col_schema.allowed_values}"))
-
-        if col_schema.pattern and not re.fullmatch(col_schema.pattern, str(val)):
-            flat.append((int(idx), f"'{val}' does not match pattern {col_schema.pattern}"))
+    flat = _find_violations(column_name, schema)
 
     if not flat:
         _state["validated_clean"].add(column_name)
@@ -191,13 +164,16 @@ def bulk_mark_errors(violations: list[dict]) -> str:
     marked, errors = 0, []
     for v in violations:
         try:
-            mark_row_error(
+            outcome = json.loads(mark_row_error(
                 int(v["row_index"]),
                 v["column_name"],
                 v["issue"],
                 v.get("id_column", ""),
-            )
-            marked += 1
+            ))
+            if "error" in outcome:
+                errors.append(outcome["error"])
+            else:
+                marked += 1
         except Exception as exc:
             errors.append(str(exc))
     result = {"marked": marked}
@@ -206,30 +182,64 @@ def bulk_mark_errors(violations: list[dict]) -> str:
     return json.dumps(result)
 
 
+def mark_remaining_violations(column_name: str, schema: DataSchema, only_issue: str = "", id_column: str = "") -> str:
+    """
+    Marks every row that still violates the schema in this column, working the rows out
+    here rather than asking Claude to list them. A tool call can't hold thousands of row
+    indices, so this is what keeps large files saveable.
+    only_issue limits marking to one validate_column group, matched on its exact 'issue' text.
+    """
+    df: pd.DataFrame = _state["df"]
+
+    if column_name not in df.columns:
+        return json.dumps({"error": f"Column '{column_name}' not in DataFrame"})
+    if column_name not in schema.columns:
+        return json.dumps({"error": f"Column '{column_name}' not in schema"})
+
+    flat = _find_violations(column_name, schema)
+    if only_issue:
+        flat = [(row, issue) for row, issue in flat if issue == only_issue]
+
+    for row_index, issue in flat:
+        mark_row_error(row_index, column_name, issue, id_column)
+
+    return json.dumps({"column": column_name, "marked": len(flat), "rows": len({row for row, _ in flat})})
+
+
 # ---------------------------------------------------------------------------
 # Fixes (for violations that CAN be auto-corrected)
 # ---------------------------------------------------------------------------
 
 def fix_dtype(column_name: str, target_dtype: str) -> str:
-    """Coerce a column to the target dtype. Values that fail become NaN."""
+    """
+    Coerce a column to the target dtype. Values that fail keep their original text, so
+    validate_column still reports them and the report shows what the user actually had.
+    """
     df: pd.DataFrame = _state["df"]
     original = df[column_name].copy()
+    _state["validated_clean"].discard(column_name)
 
-    if target_dtype == "int":
-        df[column_name] = pd.to_numeric(df[column_name], errors="coerce").astype("Int64")
+    parsed = pd.Series(
+        [None if pd.isna(v) else _try_coerce(v, target_dtype) for v in original],
+        index=original.index,
+        dtype=object,
+    )
+    failed_mask = original.notna() & parsed.isna()
+    failed = int(failed_mask.sum())
+    converted = int(parsed.notna().sum())
+
+    if failed:
+        if target_dtype == "date":
+            parsed = parsed.map(lambda v: v.strftime("%Y-%m-%d") if isinstance(v, pd.Timestamp) else v)
+        df[column_name] = parsed.where(~failed_mask, original.astype(object))
+    elif target_dtype == "int":
+        df[column_name] = pd.array(parsed.where(parsed.notna(), None).tolist(), dtype="Int64")
     elif target_dtype == "float":
-        df[column_name] = pd.to_numeric(df[column_name], errors="coerce")
-    elif target_dtype == "str":
-        df[column_name] = df[column_name].astype(str)
+        df[column_name] = pd.to_numeric(parsed)
     elif target_dtype == "date":
-        df[column_name] = pd.to_datetime(df[column_name], errors="coerce", dayfirst=True)
-
-    converted, failed = 0, 0
-    for old, new in zip(original, df[column_name]):
-        if pd.isna(new) and not pd.isna(old):
-            failed += 1
-        elif not pd.isna(new):
-            converted += 1
+        df[column_name] = pd.to_datetime(parsed)
+    elif target_dtype == "str":
+        df[column_name] = parsed
 
     return json.dumps({
         "column": column_name,
@@ -237,8 +247,8 @@ def fix_dtype(column_name: str, target_dtype: str) -> str:
         "successfully_converted": converted,
         "failed_to_convert": failed,
         "note": (
-            f"{failed} value(s) could not be converted and are now NaN. "
-            "Call validate_column again — then mark_row_error for any remaining NaN violations."
+            f"{failed} value(s) could not be converted and were left unchanged. "
+            "Call validate_column again, then mark_remaining_violations for this column."
         ) if failed else "",
     })
 
@@ -246,6 +256,7 @@ def fix_dtype(column_name: str, target_dtype: str) -> str:
 def fix_allowed_values(column_name: str, replacements: dict[str, str]) -> str:
     """Replace disallowed values with correct ones (typos, casing, etc.)."""
     df: pd.DataFrame = _state["df"]
+    _state["validated_clean"].discard(column_name)
     total_replaced = 0
     for bad, good in replacements.items():
         mask = df[column_name] == bad
@@ -264,6 +275,7 @@ def fix_allowed_values(column_name: str, replacements: dict[str, str]) -> str:
 def fill_null(column_name: str, fill_value: str) -> str:
     """Fill null values with a known correct value (only use when the value is certain)."""
     df: pd.DataFrame = _state["df"]
+    _state["validated_clean"].discard(column_name)
     null_mask = df[column_name].isna()
     count = int(null_mask.sum())
     if count == 0:
@@ -372,12 +384,57 @@ def save_with_report(
 # Private helpers
 # ---------------------------------------------------------------------------
 
+def _find_violations(column_name: str, schema: DataSchema) -> list[tuple[int, str]]:
+    """(row_index, issue_text) for every unmarked violation in a column."""
+    df: pd.DataFrame = _state["df"]
+    col_schema = schema.columns[column_name]
+    flat: list[tuple[int, str]] = []  # (row_index, issue_text)
+
+    for idx, val in df[column_name].items():
+        # Skip rows already marked for this column
+        if _already_marked(idx, column_name):
+            continue
+
+        if pd.isna(val):
+            if not col_schema.nullable:
+                flat.append((int(idx), "null value not allowed"))
+            continue
+
+        coerced = _try_coerce(val, col_schema.dtype)
+        if coerced is None:
+            flat.append((int(idx), f"cannot convert '{val}' to {col_schema.dtype}"))
+
+        if coerced is not None and col_schema.dtype in ("int", "float"):
+            if col_schema.min_value is not None and coerced < col_schema.min_value:
+                flat.append((int(idx), f"value {coerced} is below min {col_schema.min_value}"))
+            if col_schema.max_value is not None and coerced > col_schema.max_value:
+                flat.append((int(idx), f"value {coerced} is above max {col_schema.max_value}"))
+
+        if col_schema.allowed_values and str(val) not in col_schema.allowed_values:
+            flat.append((int(idx), f"'{val}' not in allowed values {col_schema.allowed_values}"))
+
+        if col_schema.pattern and not re.fullmatch(col_schema.pattern, str(val)):
+            flat.append((int(idx), f"'{val}' does not match pattern {col_schema.pattern}"))
+
+    return flat
+
+
+def _parse_date(value: Any) -> pd.Timestamp:
+    """ISO dates are unambiguous; only other formats are read day-first."""
+    text = str(value).strip()
+    if re.match(r"\d{4}-\d{2}-\d{2}", text):
+        return pd.to_datetime(text)
+    return pd.to_datetime(text, dayfirst=True)
+
+
 def _try_coerce(value: Any, dtype: str) -> Any:
     try:
-        if dtype == "int":   return int(float(str(value)))
+        if dtype == "int":
+            number = float(str(value))
+            return int(number) if number == int(number) else None
         if dtype == "float": return float(str(value))
         if dtype == "str":   return str(value)
-        if dtype == "date":  return pd.to_datetime(value, dayfirst=True)
+        if dtype == "date":  return _parse_date(value)
     except Exception:
         return None
     return None
