@@ -275,7 +275,12 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
         if name == "validate_column":
             return t.validate_column(inputs["column_name"], schema)
         if name == "fix_dtype":
-            return t.fix_dtype(inputs["column_name"], inputs["target_dtype"])
+            col_schema = schema.columns.get(inputs["column_name"])
+            return t.fix_dtype(
+                inputs["column_name"],
+                inputs["target_dtype"],
+                col_schema.date_format if col_schema else None,
+            )
         if name == "fix_allowed_values":
             return t.fix_allowed_values(inputs["column_name"], inputs["replacements"])
         if name == "fill_null":

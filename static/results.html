@@ -53,7 +53,7 @@
       padding: 24px 32px 48px;
     }
 
-    .results-wrap { max-width: 760px; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .results-wrap { max-width: 1040px; min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 12px; }
 
     .results-header { display: flex; align-items: baseline; justify-content: space-between; }
     .results-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
@@ -196,6 +196,77 @@
       main { padding: 16px; }
       nav.topnav { padding: 0 16px; }
     }
+    /* ── Step indicator ── */
+    .steps {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .step-item { display: flex; align-items: center; gap: 6px; }
+    .step-item.current { color: var(--text); font-weight: 600; }
+    .step-dot {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; border: 1px solid var(--border); background: var(--surface);
+    }
+    .step-item.current .step-dot { background: var(--text); border-color: var(--text); color: #fff; }
+    .step-item.done .step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+    .step-sep { color: var(--border); }
+    .steps { margin-bottom: 20px; }
+
+    /* ── Review ── */
+    .review-panel {
+      display: none; background: var(--surface); min-width: 0;
+      border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    .review-panel.show { display: block; }
+    .review-head { padding: 16px 16px 0; }
+    .review-title { font-size: 15px; font-weight: 600; }
+    .review-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 2px; }
+    .review-tabs { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--border); }
+    .review-tab {
+      background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      padding: 8px 10px; font: inherit; font-size: 13px; font-weight: 500;
+      color: var(--text-muted); cursor: pointer;
+    }
+    .review-tab:hover { color: var(--text); }
+    .review-tab.active { color: var(--text); border-bottom-color: var(--text); }
+    .review-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; }
+    .review-tools select, .review-tools input {
+      font: inherit; font-size: 12px; color: var(--text); background: var(--surface);
+      padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; outline: none; min-width: 0;
+    }
+    .review-tools input { flex: 1 1 160px; }
+    .review-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--text-muted); padding: 0 16px 10px; }
+    .review-legend span { display: flex; align-items: center; gap: 5px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
+    .review-scroll { overflow: auto; max-height: 560px; border-top: 1px solid var(--border); }
+    .review-table { border-collapse: separate; border-spacing: 0; font-size: 12px; width: 100%; }
+    .review-table th {
+      position: sticky; top: 0; z-index: 2; background: #f4f4f5; text-align: left;
+      font-weight: 600; white-space: nowrap; padding: 7px 10px; border-bottom: 1px solid var(--border);
+    }
+    .review-table td {
+      padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top;
+      white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .review-table td.wrap { white-space: normal; min-width: 260px; max-width: 420px; overflow-wrap: anywhere; line-height: 1.45; }
+    .review-table .row-number { position: sticky; left: 0; z-index: 1; background: var(--surface); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .review-table th.row-number { z-index: 3; background: #f4f4f5; }
+    .cell-flagged { background: #fef3c7; }
+    .cell-changed { background: #dbeafe; }
+    .legend-flagged { background: #fef3c7; }
+    .legend-changed { background: #dbeafe; }
+    .finding-changed { color: #1d4ed8; }
+    .finding-flagged { color: #92400e; }
+    .review-empty { padding: 32px 16px; text-align: center; font-size: 13px; color: var(--text-muted); }
+    .review-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+    .review-pager button {
+      font: inherit; font-size: 12px; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+    }
+    .review-pager button:disabled { opacity: .45; cursor: not-allowed; }
+    .review-pager-buttons { display: flex; gap: 6px; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -207,6 +278,13 @@
 
 <main>
   <div class="results-wrap">
+    <div class="steps">
+      <span class="step-item done"><span class="step-dot">&#10003;</span>Upload</span>
+      <span class="step-sep">/</span>
+      <span class="step-item done"><span class="step-dot">&#10003;</span>Schema</span>
+      <span class="step-sep">/</span>
+      <span class="step-item current"><span class="step-dot">3</span>Clean</span>
+    </div>
 
     <div id="no-job" class="empty-state" style="display:none">
       <p>No job specified — start a new one to see results here.</p>
@@ -229,6 +307,33 @@
         <div class="issues-list" id="issues-list" style="display:none">
           <div class="issues-label">Most common issues</div>
           <div id="issues-rows"></div>
+        </div>
+      </div>
+
+      <div class="review-panel" id="review-panel">
+        <div class="review-head">
+          <div class="review-title">Review your results</div>
+          <div class="review-note" id="review-note"></div>
+          <div class="review-tabs">
+            <button class="review-tab active" id="tab-data" onclick="setReviewTab('data')"></button>
+            <button class="review-tab" id="tab-report" onclick="setReviewTab('report')"></button>
+          </div>
+        </div>
+        <div class="review-tools">
+          <select id="review-filter" aria-label="Filter" onchange="reviewPage = 0; renderReview()"></select>
+          <input id="review-search" type="search" placeholder="Search" aria-label="Search" oninput="reviewPage = 0; renderReview()">
+        </div>
+        <div class="review-legend" id="review-legend">
+          <span><span class="legend-swatch legend-flagged"></span>Flagged for review</span>
+          <span><span class="legend-swatch legend-changed"></span>Corrected by the agent</span>
+        </div>
+        <div class="review-scroll" id="review-scroll"></div>
+        <div class="review-pager">
+          <span id="review-count"></span>
+          <span class="review-pager-buttons">
+            <button id="review-prev" onclick="reviewPage--; renderReview()">Previous</button>
+            <button id="review-next" onclick="reviewPage++; renderReview()">Next</button>
+          </span>
         </div>
       </div>
 
@@ -319,6 +424,7 @@
           rb.setAttribute('download', 'error_report.csv');
           rb.style.display = 'block';
         }
+        loadReview();
         return;
       case 'error':
         el.className = 'log-error-msg';
@@ -385,7 +491,9 @@
     document.getElementById('summary-detail').textContent =
       flagged === 0
         ? 'No issues found — nothing needs manual review.'
-        : `${flagged.toLocaleString()} row(s) were flagged for manual review — they were kept in the output, not deleted. See the error report for details.`;
+        : msg.rows_in_output_csv < total
+          ? `${flagged.toLocaleString()} row(s) were flagged and left out of the output. See the error report for details.`
+          : `${flagged.toLocaleString()} row(s) were flagged for manual review — they were kept in the output, not deleted. See the error report for details.`;
 
     finalizeChecklist(msg.issues_by_column || {});
 
@@ -404,6 +512,165 @@
     } else {
       issuesList.style.display = 'none';
     }
+  }
+
+  // ── Review ──
+  const REVIEW_PAGE_SIZE = 50;
+  let reviewData = null;
+  let reviewTab = 'data';
+  let reviewPage = 0;
+
+  async function loadReview() {
+    try {
+      const res = await fetch(`/review/${encodeURIComponent(jobId)}`);
+      if (!res.ok) return;
+      reviewData = await res.json();
+    } catch (e) {
+      return;
+    }
+    const d = reviewData;
+    document.getElementById('tab-data').textContent = `Cleaned data (${d.rows_in_output.toLocaleString()})`;
+    document.getElementById('tab-report').textContent = `Error report (${d.report.length.toLocaleString()})`;
+    document.getElementById('review-note').textContent = d.removed_flagged
+      ? `${d.rows_in_output.toLocaleString()} of ${d.rows_in_original.toLocaleString()} rows are in your output. The ${d.flagged_rows.toLocaleString()} flagged rows were left out and are listed in the error report.`
+      : `${d.flagged_rows.toLocaleString()} rows flagged and ${d.changed_cells.toLocaleString()} cells corrected, across all ${d.rows_in_output.toLocaleString()} rows. Row numbers match your original file.`;
+    document.getElementById('review-panel').classList.add('show');
+    setReviewTab('data');
+  }
+
+  function setReviewTab(tab) {
+    reviewTab = tab;
+    reviewPage = 0;
+    document.getElementById('tab-data').classList.toggle('active', tab === 'data');
+    document.getElementById('tab-report').classList.toggle('active', tab === 'report');
+    document.getElementById('review-legend').style.display = tab === 'data' ? 'flex' : 'none';
+    document.getElementById('review-search').value = '';
+
+    const filter = document.getElementById('review-filter');
+    const options = tab === 'data'
+      ? [['all', 'All rows'], ['flagged', 'Flagged rows'], ['changed', 'Corrected rows']]
+      : [['all', 'All columns'], ...[...new Set(reviewData.report.map(r => r.column))].sort().map(c => [c, c])];
+    filter.replaceChildren(...options.map(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }));
+    renderReview();
+  }
+
+  function reviewCell(text, className, title) {
+    const td = document.createElement('td');
+    td.textContent = text ?? '';
+    if (className) td.className = className;
+    if (title) td.title = title;
+    return td;
+  }
+
+  function reviewTable(headers, rows) {
+    const table = document.createElement('table');
+    table.className = 'review-table';
+    const headRow = document.createElement('tr');
+    headers.forEach((name, i) => {
+      const th = document.createElement('th');
+      th.textContent = name;
+      if (i === 0) th.className = 'row-number';
+      headRow.append(th);
+    });
+    const thead = document.createElement('thead');
+    thead.append(headRow);
+    const tbody = document.createElement('tbody');
+    tbody.append(...rows);
+    table.append(thead, tbody);
+    return table;
+  }
+
+  function dataRow(row) {
+    const tr = document.createElement('tr');
+    tr.append(reviewCell(row.row ?? '', 'row-number'));
+    reviewData.columns.forEach((column, i) => {
+      const flagged = row.issues[column];
+      const changed = row.changes[column];
+      const className = flagged ? 'cell-flagged' : changed !== undefined ? 'cell-changed' : '';
+      const title = flagged ? flagged.join('; ') : changed !== undefined ? `Was: ${changed}` : row.values[i];
+      tr.append(reviewCell(row.values[i], className, title));
+    });
+
+    const findings = document.createElement('td');
+    findings.className = 'wrap';
+    for (const [column, was] of Object.entries(row.changes)) {
+      const line = document.createElement('div');
+      line.className = 'finding-changed';
+      line.textContent = `${column}: corrected from "${was}"`;
+      findings.append(line);
+    }
+    for (const [column, issues] of Object.entries(row.issues)) {
+      const line = document.createElement('div');
+      line.className = 'finding-flagged';
+      line.textContent = `${column}: ${issues.join('; ')}`;
+      findings.append(line);
+    }
+    tr.append(findings);
+    return tr;
+  }
+
+  function reportRow(entry) {
+    const tr = document.createElement('tr');
+    tr.append(
+      reviewCell(entry.row, 'row-number'),
+      reviewCell(entry.column),
+      reviewCell(entry.value),
+      reviewCell(entry.issue, 'wrap'),
+      reviewCell(entry.row_id));
+    return tr;
+  }
+
+  function renderReview() {
+    const filter = document.getElementById('review-filter').value;
+    const search = document.getElementById('review-search').value.trim().toLowerCase();
+    let items, headers, build, noun;
+
+    if (reviewTab === 'data') {
+      noun = 'rows';
+      headers = ['Row', ...reviewData.columns, 'What we found'];
+      build = dataRow;
+      items = reviewData.rows.filter(r =>
+        (filter === 'all'
+          || (filter === 'flagged' && Object.keys(r.issues).length)
+          || (filter === 'changed' && Object.keys(r.changes).length))
+        && (!search || r.values.join(' ').toLowerCase().includes(search)));
+    } else {
+      noun = 'issues';
+      headers = ['Row', 'Column', 'Value', 'Issue', 'Row ID'];
+      build = reportRow;
+      items = reviewData.report.filter(r =>
+        (filter === 'all' || r.column === filter)
+        && (!search || `${r.value} ${r.issue} ${r.row_id}`.toLowerCase().includes(search)));
+    }
+
+    const pages = Math.max(1, Math.ceil(items.length / REVIEW_PAGE_SIZE));
+    reviewPage = Math.min(reviewPage, pages - 1);
+    const start = reviewPage * REVIEW_PAGE_SIZE;
+    const pageItems = items.slice(start, start + REVIEW_PAGE_SIZE);
+
+    const scroll = document.getElementById('review-scroll');
+    if (pageItems.length) {
+      scroll.replaceChildren(reviewTable(headers, pageItems.map(build)));
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'review-empty';
+      empty.textContent = reviewTab === 'report' && !reviewData.report.length
+        ? 'No issues found.'
+        : 'Nothing matches that filter.';
+      scroll.replaceChildren(empty);
+    }
+    scroll.scrollTop = 0;
+
+    document.getElementById('review-count').textContent = items.length
+      ? `Showing ${(start + 1).toLocaleString()}–${(start + pageItems.length).toLocaleString()} of ${items.length.toLocaleString()} ${noun}`
+      : `0 ${noun}`;
+    document.getElementById('review-prev').disabled = reviewPage === 0;
+    document.getElementById('review-next').disabled = reviewPage >= pages - 1;
   }
 
   function setStatus(state) {

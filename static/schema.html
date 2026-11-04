@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — Schema</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --text:       #09090b;
+      --text-muted: #71717a;
+      --border:     #e4e4e7;
+      --bg:         #fafafa;
+      --surface:    #ffffff;
+      --accent:     #18181b;
+      --accent-hover: #3f3f46;
+      --blue:       #2563eb;
+      --green:      #16a34a;
+      --radius:     8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Nav ── */
+    nav.topnav {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; height: 52px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .nav-logo { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+    .nav-back {
+      font-size: 13px; color: var(--text-muted);
+      text-decoration: none; font-weight: 500;
+    }
+    .nav-back:hover { color: var(--text); }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; padding: 0 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      padding: 11px 16px; font-size: 13px; font-weight: 500;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      color: var(--text-muted); transition: all .15s; user-select: none;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--text); }
+
+    /* ── Pages ── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Agent tab layout: single-column flow ── */
+    #page-agent {
+      display: none;
+      max-width: 620px; width: 100%; margin: 0 auto;
+      padding: 32px 32px 64px;
+    }
+    #page-agent.active { display: block; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex; flex-direction: column; gap: 24px;
+    }
+
+    /* ── Field labels ── */
+    .field-label {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .05em; text-transform: uppercase;
+      color: var(--text-muted); margin-bottom: 8px;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 24px 16px; text-align: center; cursor: pointer;
+      transition: all .15s; position: relative; color: var(--text-muted);
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: #a1a1aa; background: var(--bg);
+    }
+    .upload-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .upload-zone p { font-size: 13px; line-height: 1.5; }
+    .upload-zone strong { color: var(--text); font-weight: 600; }
+
+    .file-selected {
+      display: none; align-items: center; gap: 8px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--text);
+    }
+    .file-selected.show { display: flex; }
+    .file-type-badge {
+      font-size: 10px; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--text-muted);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 2px 5px; flex-shrink: 0;
+    }
+
+    /* ── Columns detected ── */
+    #columns-detected {
+      display: none; margin-top: 8px;
+      font-size: 12px; color: var(--text-muted);
+    }
+    #columns-list {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text);
+    }
+
+    /* ── Inputs ── */
+    .hint { font-size: 12px; color: var(--text-muted); }
+
+    textarea {
+      width: 100%; font-family: inherit; font-size: 13px; line-height: 1.65;
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+      resize: vertical; color: var(--text); background: var(--surface);
+      outline: none; transition: border-color .15s;
+    }
+    textarea:focus { border-color: #a1a1aa; }
+    textarea#schema-input { font-family: 'JetBrains Mono', monospace; font-size: 12px; min-height: 200px; }
+    textarea#nl-rules { min-height: 72px; }
+
+    .or-divider {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: .05em; margin: 12px 0;
+    }
+    .or-divider::before, .or-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    /* ── Infer / upload-schema buttons ── */
+    #infer-btn, .btn-secondary {
+      width: 100%; padding: 8px 12px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; color: var(--text);
+      cursor: pointer; transition: all .15s;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    #infer-btn:hover:not(:disabled), .btn-secondary:hover { border-color: #a1a1aa; background: #f4f4f5; }
+    #infer-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-secondary input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    #schema-file-name { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Schema builder ── */
+    .builder-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
+    .builder-status.error { color: #dc2626; }
+    .builder-section { display: none; margin-top: 16px; }
+    .builder-section.show { display: block; }
+    .builder-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .builder-title small { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+
+    .question {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; margin-bottom: 8px; background: var(--surface);
+    }
+    .question.needs-answer { border-color: #f59e0b; background: #fffbeb; }
+    .question-text { font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+    .question-why { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 3px 0 8px; overflow-wrap: anywhere; }
+    .question-option {
+      display: flex; align-items: flex-start; gap: 8px; font-size: 13px;
+      padding: 4px 0; cursor: pointer; line-height: 1.4; overflow-wrap: anywhere;
+    }
+    .question-option input { margin-top: 3px; flex-shrink: 0; }
+    .suggested { font-size: 11px; color: var(--green); font-weight: 600; margin-left: 4px; white-space: nowrap; }
+
+    .decision-list { list-style: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .decision-list li { padding: 8px 12px; font-size: 12px; line-height: 1.5; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+    .decision-list li:first-child { border-top: 0; }
+    .decision-column { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-right: 6px; }
+    .decision-reason { color: var(--text-muted); display: block; }
+
+    .column-card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; margin-bottom: 8px; background: var(--surface);
+    }
+    .column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .column-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+    .column-required { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
+    .column-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .column-field { display: block; font-size: 11px; color: var(--text-muted); min-width: 0; }
+    .column-field.wide { grid-column: 1 / -1; }
+    .column-field input, .column-field select {
+      display: block; width: 100%; margin-top: 3px; padding: 6px 8px;
+      font-family: inherit; font-size: 12px; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px; outline: none;
+    }
+    .column-field input:focus, .column-field select:focus { border-color: #a1a1aa; }
+
+    details.advanced { margin-top: 16px; }
+    details.advanced summary { font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; margin-bottom: 10px; }
+
+    /* ── Step indicator ── */
+    .steps {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .step-item { display: flex; align-items: center; gap: 6px; }
+    .step-item.current { color: var(--text); font-weight: 600; }
+    .step-dot {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; border: 1px solid var(--border); background: var(--surface);
+    }
+    .step-item.current .step-dot { background: var(--text); border-color: var(--text); color: #fff; }
+    .step-item.done .step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+    .step-sep { color: var(--border); }
+
+    /* ── Mode selector ── */
+    .mode-group { display: flex; flex-direction: column; gap: 6px; }
+    .mode-card { cursor: pointer; }
+    .mode-card input[type=radio] { display: none; }
+    .mode-body {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 12px; display: flex; align-items: flex-start; gap: 10px;
+      transition: border-color .15s; background: var(--surface);
+    }
+    .mode-card:hover .mode-body { border-color: #a1a1aa; }
+    .mode-card input:checked + .mode-body { border-color: var(--accent); background: var(--bg); }
+    .mode-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0; margin-top: 5px;
+    }
+    .mode-card:nth-child(1) .mode-dot { background: #a1a1aa; }
+    .mode-card:nth-child(2) .mode-dot { background: var(--blue); }
+    .mode-card:nth-child(3) .mode-dot { background: var(--green); }
+    .mode-info { flex: 1; }
+    .mode-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .mode-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ── Run button ── */
+    #run-btn {
+      width: 100%; padding: 11px;
+      background: var(--accent); color: white;
+      border: none; border-radius: var(--radius);
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: background .15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #run-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    #run-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 14px; height: 14px; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white; border-radius: 50%;
+      animation: spin .7s linear infinite; display: none;
+    }
+    #run-btn.running .spinner { display: block; }
+
+    /* ── Guide tab ── */
+    #page-guide {
+      display: none; max-width: 800px;
+      margin: 32px auto; padding: 0 32px 64px;
+    }
+    #page-guide.active { display: block; }
+
+    .guide-section { margin-bottom: 40px; }
+    .guide-section h2 {
+      font-size: 15px; font-weight: 700; letter-spacing: -.01em;
+      margin-bottom: 14px; color: var(--text);
+    }
+    .guide-section p { font-size: 14px; color: #52525b; line-height: 1.7; margin-bottom: 10px; }
+    .guide-section ul { padding-left: 18px; }
+    .guide-section li { font-size: 14px; color: #52525b; line-height: 1.8; }
+    .guide-divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    .step-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .step-num-sm {
+      min-width: 22px; height: 22px;
+      background: var(--border); color: var(--text-muted);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; margin-top: 2px; flex-shrink: 0;
+    }
+    .step-text { font-size: 14px; color: #52525b; line-height: 1.7; }
+
+    .code-block {
+      background: #09090b; color: #e4e4e7;
+      border: 1px solid #27272a; border-radius: var(--radius);
+      padding: 16px 18px;
+      font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7;
+      overflow-x: auto; margin: 10px 0;
+    }
+    .code-block .comment { color: #3f3f46; }
+    .code-block .key     { color: #38bdf8; }
+    .code-block .string  { color: #818cf8; }
+    .code-block .number  { color: #4ade80; }
+    .code-block .bool    { color: #fbbf24; }
+
+    .rule-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+    .rule-table th {
+      text-align: left; padding: 8px 12px;
+      background: var(--bg); color: var(--text-muted);
+      font-weight: 600; border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .rule-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: #52525b; vertical-align: top; }
+    .rule-table tr:last-child td { border-bottom: none; }
+    code {
+      font-family: 'JetBrains Mono', monospace; font-size: .87em;
+      background: var(--bg); padding: 1px 5px;
+      border: 1px solid var(--border); border-radius: 4px;
+    }
+
+    @media (max-width: 768px) {
+      #page-agent { padding: 16px; }
+      .tabs, nav.topnav { padding: 0 16px; }
+      #page-guide { padding: 0 16px 48px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="nav-logo">SheetTriage</span>
+  <a href="/app" class="nav-back">&larr; Choose another file</a>
+</nav>
+
+<div id="page-agent" class="page active">
+  <div class="steps">
+    <span class="step-item done"><span class="step-dot">&#10003;</span>Upload</span>
+    <span class="step-sep">/</span>
+    <span class="step-item current"><span class="step-dot">2</span>Schema</span>
+    <span class="step-sep">/</span>
+    <span class="step-item "><span class="step-dot">3</span>Clean</span>
+  </div>
+
+  <div class="file-selected show" id="file-badge" style="margin-bottom:16px;">
+    <span class="file-type-badge">CSV</span>
+    <span id="file-name">Loading your file...</span>
+  </div>
+
+  <div class="card" id="schema-card">
+
+    <!-- Rules + Schema -->
+    <div>
+      <div class="field-label">1 — Define Your Schema</div>
+      <p class="hint" style="margin-bottom:8px">We've scanned your file. Answer anything we couldn't work out, and add rules in plain English if you have them.</p>
+      <textarea id="nl-rules" placeholder="Optional. e.g. price must be positive, email is required, category must be Electronics or Sports..."></textarea>
+      <button id="infer-btn" onclick="generateSchema()" style="margin-top:8px;">
+        <span id="infer-text">Apply My Rules</span>
+      </button>
+      <div class="builder-status" id="builder-status"></div>
+
+      <div class="builder-section" id="questions-section">
+        <div class="builder-title">A few questions <small id="questions-note"></small></div>
+        <div id="questions-list"></div>
+      </div>
+
+      <div class="builder-section" id="columns-section">
+        <div class="builder-title">Columns <small>Change anything here. It's what the agent will enforce.</small></div>
+        <div id="columns-editor"></div>
+      </div>
+
+      <div class="builder-section" id="decisions-section">
+        <div class="builder-title">What we decided <small>and why</small></div>
+        <ul class="decision-list" id="decisions-list"></ul>
+      </div>
+
+      <details class="advanced">
+        <summary>Advanced: use a schema JSON file or edit the JSON</summary>
+        <button class="btn-secondary" style="margin-bottom:10px;">
+          <input type="file" id="schema-file" accept=".json">
+          <span>Upload Schema JSON File</span>
+        </button>
+        <div id="schema-file-name"></div>
+        <textarea id="schema-input" spellcheck="false" placeholder="Upload a CSV and your schema appears here."></textarea>
+      </details>
+    </div>
+
+    <!-- Mode -->
+    <div>
+      <div class="field-label">2 — Choose Mode</div>
+      <div class="mode-group">
+        <label class="mode-card">
+          <input type="radio" name="mode" value="audit">
+          <div class="mode-body">
+            <div class="mode-dot"></div>
+            <div class="mode-info">
+              <div class="mode-name">Audit Only</div>
+              <div class="mode-desc">Validate and return an error report. Data is never changed.</div>
+            </div>
+          </div>
+        </label>
+        <label class="mode-card">
+          <input type="radio" name="mode" value="clean" checked>
+          <div class="mode-body">
+            <div class="mode-dot"></div>
+            <div class="mode-info">
+              <div class="mode-name">Clean + Report</div>
+              <div class="mode-desc">Fix safe errors automatically. Flag the rest for review.</div>
+            </div>
+          </div>
+        </label>
+        <label class="mode-card">
+          <input type="radio" name="mode" value="strict">
+          <div class="mode-body">
+            <div class="mode-dot"></div>
+            <div class="mode-info">
+              <div class="mode-name">Strict Clean</div>
+              <div class="mode-desc">Output only fully valid rows. Remove the rest.</div>
+            </div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <button id="run-btn" onclick="startClean()">
+      <div class="spinner"></div>
+      <span id="btn-text">Run Agent</span>
+    </button>
+
+  </div>
+
+  <div class="card" id="expired-card" style="display:none;">
+    <div>
+      <div class="builder-title">We couldn't find that upload</div>
+      <p class="hint" id="expired-message" style="margin-bottom:12px;"></p>
+      <a href="/app" class="btn-secondary" style="text-decoration:none;">Upload your CSV</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const uploadId = new URLSearchParams(location.search).get('upload');
+
+  let schemaIsManual = false;
+  let currentQuestions = [];
+  const answers = {};
+
+  function el(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    Object.assign(node, props);
+    node.append(...children);
+    return node;
+  }
+
+  function readSchema() {
+    try {
+      const schema = JSON.parse(document.getElementById('schema-input').value);
+      return schema && schema.columns ? schema : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeSchema(schema) {
+    document.getElementById('schema-input').value = JSON.stringify(schema, null, 2);
+  }
+
+  function setBuilderStatus(message, isError = false) {
+    const status = document.getElementById('builder-status');
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+  }
+
+  async function generateSchema(firstScan = false) {
+    const rules = document.getElementById('nl-rules').value.trim();
+    if (!firstScan && !rules) { alert('Write a rule first. Your file has already been scanned.'); return; }
+
+    const btn  = document.getElementById('infer-btn');
+    const text = document.getElementById('infer-text');
+    btn.disabled = true;
+    if (!firstScan) text.textContent = 'Applying...';
+    setBuilderStatus(firstScan ? 'Scanning your file...' : 'Applying your rules...');
+
+    try {
+      const form = new FormData();
+      form.append('upload_id', uploadId);
+      form.append('rules', firstScan ? '' : rules);
+      const res = await fetch('/infer-schema', { method: 'POST', body: form });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Failed'); }
+      const draft = await res.json();
+
+      // Applying rules keeps the answers already given.
+      const previous = { ...answers };
+      const hadManualEdits = schemaIsManual;
+      writeSchema(draft.schema);
+      schemaIsManual = false;
+      currentQuestions = draft.questions;
+      for (const key of Object.keys(answers)) delete answers[key];
+      for (const q of currentQuestions) {
+        if (previous[q.id] !== undefined) answerQuestion(q, previous[q.id]);
+        else if (q.recommended !== null && q.recommended !== undefined) answers[q.id] = q.recommended;
+      }
+      renderQuestions();
+      renderColumns();
+      renderDecisions(draft.decisions);
+      setBuilderStatus(firstScan ? '' : hadManualEdits
+        ? 'Rules applied. This rebuilt the columns, so re-check any edits you made by hand.'
+        : 'Rules applied.');
+    } catch(e) {
+      setBuilderStatus('Could not build a schema: ' + e.message, true);
+    } finally {
+      btn.disabled = false;
+      text.textContent = 'Apply My Rules';
+    }
+  }
+
+  function unansweredQuestions() {
+    return currentQuestions.filter(q => q.required && answers[q.id] === undefined);
+  }
+
+  function answerQuestion(question, index) {
+    answers[question.id] = index;
+    const schema = readSchema();
+    const column = schema && schema.columns[question.column];
+    if (column) {
+      for (const [key, value] of Object.entries(question.options[index].patch)) {
+        if (value === null) delete column[key];
+        else column[key] = value;
+      }
+      writeSchema(schema);
+    }
+    renderQuestions();
+    renderColumns();
+  }
+
+  function renderQuestions() {
+    const list = document.getElementById('questions-list');
+    list.replaceChildren();
+    document.getElementById('questions-section').classList.toggle('show', currentQuestions.length > 0);
+
+    const waiting = unansweredQuestions().length;
+    document.getElementById('questions-note').textContent = waiting
+      ? `${waiting} need${waiting === 1 ? 's' : ''} your answer before running`
+      : 'Our suggestions are selected. Change any that are wrong.';
+
+    for (const q of currentQuestions) {
+      const card = el('div', { className: 'question' },
+        el('div', { className: 'question-text', textContent: q.question }),
+        el('div', { className: 'question-why', textContent: q.why }));
+      card.classList.toggle('needs-answer', Boolean(q.required) && answers[q.id] === undefined);
+
+      q.options.forEach((option, i) => {
+        const input = el('input', { type: 'radio', name: 'q-' + q.id, checked: answers[q.id] === i });
+        input.addEventListener('change', () => answerQuestion(q, i));
+        const label = el('label', { className: 'question-option' }, input, el('span', { textContent: option.label }));
+        if (q.recommended === i) label.append(el('span', { className: 'suggested', textContent: 'Suggested' }));
+        card.append(label);
+      });
+      list.append(card);
+    }
+  }
+
+  function renderDecisions(decisions) {
+    const list = document.getElementById('decisions-list');
+    list.replaceChildren();
+    document.getElementById('decisions-section').classList.toggle('show', decisions.length > 0);
+    for (const d of decisions) {
+      list.append(el('li', {},
+        el('span', { className: 'decision-column', textContent: d.column }),
+        el('span', { textContent: d.decision }),
+        el('span', { className: 'decision-reason', textContent: d.reason })));
+    }
+  }
+
+  function setField(name, key, value) {
+    const schema = readSchema();
+    if (!schema) return;
+    if (value === '' || value === null) delete schema.columns[name][key];
+    else schema.columns[name][key] = value;
+    writeSchema(schema);
+    schemaIsManual = true;
+  }
+
+  function field(label, input, wide = false) {
+    return el('label', { className: 'column-field' + (wide ? ' wide' : '') }, label, input);
+  }
+
+  function selectInput(options, value, onChange) {
+    const select = el('select', {}, ...options.map(([v, text]) => el('option', { value: v, textContent: text })));
+    select.value = value;
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  function textInput(value, placeholder, onChange, type = 'text') {
+    const input = el('input', { type, placeholder, value: value ?? '' });
+    if (type === 'number') input.step = 'any';
+    input.addEventListener('change', () => onChange(input.value));
+    return input;
+  }
+
+  function renderColumns() {
+    const editor = document.getElementById('columns-editor');
+    editor.replaceChildren();
+    const schema = readSchema();
+    document.getElementById('columns-section').classList.toggle('show', Boolean(schema));
+    if (!schema) return;
+
+    for (const [name, spec] of Object.entries(schema.columns)) {
+      const required = el('input', { type: 'checkbox', checked: !spec.nullable });
+      required.addEventListener('change', () => setField(name, 'nullable', !required.checked));
+
+      const fields = el('div', { className: 'column-fields' },
+        field('Type', selectInput(
+          [['str', 'Text'], ['int', 'Whole number'], ['float', 'Decimal number'], ['date', 'Date']],
+          spec.dtype,
+          value => { setField(name, 'dtype', value); renderColumns(); }), spec.dtype !== 'date'));
+
+      const numberValue = value => value === '' ? null : Number(value);
+      if (spec.dtype === 'int' || spec.dtype === 'float') {
+        fields.append(
+          field('Minimum', textInput(spec.min_value, 'No minimum', v => setField(name, 'min_value', numberValue(v)), 'number')),
+          field('Maximum', textInput(spec.max_value, 'No maximum', v => setField(name, 'max_value', numberValue(v)), 'number')));
+      } else if (spec.dtype === 'date') {
+        fields.append(field('Date order', selectInput(
+          [['', 'Not chosen: flag unclear dates'], ['YMD', 'Year first (2024-04-03)'], ['DMY', 'Day first (03/04/2024)'], ['MDY', 'Month first (04/03/2024)']],
+          spec.date_format ?? '',
+          value => setField(name, 'date_format', value))));
+      } else {
+        fields.append(
+          field('Allowed values, separated by commas', textInput(
+            (spec.allowed_values || []).join(', '),
+            'Any text',
+            v => setField(name, 'allowed_values', v.trim() ? v.split(',').map(x => x.trim()).filter(Boolean) : null)), true),
+          field('Must match pattern (regex)', textInput(spec.pattern, 'No pattern', v => setField(name, 'pattern', v)), true));
+      }
+
+      editor.append(el('div', { className: 'column-card' },
+        el('div', { className: 'column-head' },
+          el('span', { className: 'column-name', textContent: name }),
+          el('label', { className: 'column-required' }, required, 'Required')),
+        fields));
+    }
+  }
+
+  document.getElementById('schema-input').addEventListener('change', () => {
+    schemaIsManual = true;
+    renderColumns();
+  });
+
+  async function startClean() {
+
+    const waiting = unansweredQuestions();
+    if (waiting.length) {
+      alert('Please answer this question first:\n' + waiting[0].question);
+      document.getElementById('questions-section').scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    const schemaText = document.getElementById('schema-input').value.trim();
+    try { JSON.parse(schemaText); } catch(e) { alert('Schema JSON is invalid:\n' + e.message); return; }
+    if (!readSchema() || !Object.keys(readSchema().columns).length) { alert('Your schema has no columns yet.'); return; }
+
+    const btn  = document.getElementById('run-btn');
+    const btnText = document.getElementById('btn-text');
+    btn.disabled = true;
+    btn.classList.add('running');
+    btnText.textContent = 'Starting...';
+
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    const form = new FormData();
+    form.append('upload_id', uploadId);
+    form.append('schema_json', schemaText);
+    form.append('mode', mode);
+
+    try {
+      const res = await fetch('/clean', { method: 'POST', body: form });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Server error'); }
+      const jobId = (await res.json()).job_id;
+      window.location.href = `/results?job=${jobId}`;
+    } catch(e) {
+      alert('Could not start job:\n' + e.message);
+      btn.disabled = false;
+      btn.classList.remove('running');
+      btnText.textContent = 'Run Agent';
+    }
+  }
+  // Schema file upload — reads a .json file straight into the schema textarea
+  document.getElementById('schema-file').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const nameEl = document.getElementById('schema-file-name');
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const ta = document.getElementById('schema-input');
+        ta.value = JSON.stringify(parsed, null, 2);
+        ta.style.borderColor = '#a1a1aa';
+        setTimeout(() => { ta.style.borderColor = ''; }, 1000);
+        schemaIsManual = true;
+        currentQuestions = [];
+        renderQuestions();
+        renderDecisions([]);
+        renderColumns();
+        nameEl.textContent = `Loaded: ${f.name}`;
+        nameEl.style.color = 'var(--text-muted)';
+      } catch (err) {
+        nameEl.textContent = `Could not parse ${f.name}: ${err.message}`;
+        nameEl.style.color = '#dc2626';
+      }
+    };
+    reader.readAsText(f);
+  });
+
+  async function loadUpload() {
+    try {
+      const res = await fetch('/uploads/' + encodeURIComponent(uploadId || 'missing'));
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload not found'); }
+      const upload = await res.json();
+      document.getElementById('file-name').textContent =
+        `${upload.filename}: ${upload.rows.toLocaleString()} rows, ${upload.columns.length} columns`;
+      generateSchema(true);
+    } catch (e) {
+      document.getElementById('file-badge').style.display = 'none';
+      document.getElementById('schema-card').style.display = 'none';
+      document.getElementById('expired-message').textContent = e.message;
+      document.getElementById('expired-card').style.display = 'flex';
+    }
+  }
+
+  loadUpload();
+</script>
+
+</body>
+</html>

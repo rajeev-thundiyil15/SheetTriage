@@ -19,6 +19,9 @@ from typing import Any
 from schema import DataSchema
 
 
+NUMERIC_DATE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})(?:\s.*)?$")
+YEAR_FIRST_DATE = re.compile(r"^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[ T].*)?$")
+
 _state: dict[str, Any] = {
     "df": None,
     "error_log": [],        # [{row_index, id_value, column, original_value, error}]
@@ -34,6 +37,10 @@ def set_dataframe(df: pd.DataFrame) -> None:
 
 def get_dataframe() -> pd.DataFrame:
     return _state["df"]
+
+
+def get_error_log() -> list[dict]:
+    return list(_state["error_log"])
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +137,12 @@ def mark_row_error(row_index: int, column_name: str, issue: str, id_column: str 
     df.at[row_index, "_errors"] = (current + "; " + issue).lstrip("; ")
 
     # Capture the original (current) value for the report
-    original_value = str(df.at[row_index, column_name]) if column_name in df.columns else "(unknown)"
+    if column_name not in df.columns:
+        original_value = "(unknown)"
+    elif pd.isna(df.at[row_index, column_name]):
+        original_value = "(blank)"
+    else:
+        original_value = str(df.at[row_index, column_name])
 
     # Resolve a human-readable row identifier
     id_val = _resolve_id(df, row_index, id_column)
@@ -210,7 +222,7 @@ def mark_remaining_violations(column_name: str, schema: DataSchema, only_issue: 
 # Fixes (for violations that CAN be auto-corrected)
 # ---------------------------------------------------------------------------
 
-def fix_dtype(column_name: str, target_dtype: str) -> str:
+def fix_dtype(column_name: str, target_dtype: str, date_format: str | None = None) -> str:
     """
     Coerce a column to the target dtype. Values that fail keep their original text, so
     validate_column still reports them and the report shows what the user actually had.
@@ -220,7 +232,7 @@ def fix_dtype(column_name: str, target_dtype: str) -> str:
     _state["validated_clean"].discard(column_name)
 
     parsed = pd.Series(
-        [None if pd.isna(v) else _try_coerce(v, target_dtype) for v in original],
+        [None if pd.isna(v) else _try_coerce(v, target_dtype, date_format) for v in original],
         index=original.index,
         dtype=object,
     )
@@ -400,8 +412,10 @@ def _find_violations(column_name: str, schema: DataSchema) -> list[tuple[int, st
                 flat.append((int(idx), "null value not allowed"))
             continue
 
-        coerced = _try_coerce(val, col_schema.dtype)
-        if coerced is None:
+        coerced = _try_coerce(val, col_schema.dtype, col_schema.date_format)
+        if coerced is None and col_schema.dtype == "date" and not col_schema.date_format and _is_ambiguous_date(val):
+            flat.append((int(idx), f"date '{val}' could be day first or month first; no date format was chosen"))
+        elif coerced is None:
             flat.append((int(idx), f"cannot convert '{val}' to {col_schema.dtype}"))
 
         if coerced is not None and col_schema.dtype in ("int", "float"):
@@ -419,22 +433,43 @@ def _find_violations(column_name: str, schema: DataSchema) -> list[tuple[int, st
     return flat
 
 
-def _parse_date(value: Any) -> pd.Timestamp:
-    """ISO dates are unambiguous; only other formats are read day-first."""
+def _is_ambiguous_date(value: Any) -> bool:
+    match = NUMERIC_DATE.match(str(value).strip())
+    if not match:
+        return False
+    first, second = int(match.group(1)), int(match.group(2))
+    return first != second and first <= 12 and second <= 12
+
+
+def _parse_date(value: Any, date_format: str | None = None) -> pd.Timestamp:
+    """
+    Year-first and named-month dates can't be misread. A date like 03/04/2024 can, so it
+    follows date_format, and with none chosen only an unambiguous one is accepted.
+    """
     text = str(value).strip()
-    if re.match(r"\d{4}-\d{2}-\d{2}", text):
+    if YEAR_FIRST_DATE.match(text):
         return pd.to_datetime(text)
-    return pd.to_datetime(text, dayfirst=True)
+
+    match = NUMERIC_DATE.match(text)
+    if not match:
+        return pd.to_datetime(text)
+
+    first, second, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    year = year + 2000 if year < 100 else year
+    if date_format == "YMD" or (date_format is None and _is_ambiguous_date(text)):
+        raise ValueError(f"cannot read {text} with date format {date_format}")
+    day_first = date_format == "DMY" or (date_format is None and first > 12)
+    return pd.Timestamp(year=year, month=second if day_first else first, day=first if day_first else second)
 
 
-def _try_coerce(value: Any, dtype: str) -> Any:
+def _try_coerce(value: Any, dtype: str, date_format: str | None = None) -> Any:
     try:
         if dtype == "int":
             number = float(str(value))
             return int(number) if number == int(number) else None
         if dtype == "float": return float(str(value))
         if dtype == "str":   return str(value)
-        if dtype == "date":  return _parse_date(value)
+        if dtype == "date":  return _parse_date(value, date_format)
     except Exception:
         return None
     return None

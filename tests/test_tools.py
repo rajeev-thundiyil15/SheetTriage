@@ -241,6 +241,13 @@ def test_mark_row_error_logs_the_row_id_and_current_value():
     }]
 
 
+def test_a_blank_cell_is_reported_as_blank():
+    load(name=[None])
+    t.mark_row_error(0, "name", "missing name")
+
+    assert t._state["error_log"][0]["original_value"] == "(blank)"
+
+
 def test_mark_row_error_rejects_an_unknown_row():
     load(price=["1"])
     assert "not in DataFrame" in json.loads(t.mark_row_error(99, "price", "bad"))["error"]

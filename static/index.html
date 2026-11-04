@@ -167,6 +167,71 @@
 
     #schema-file-name { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 
+    /* ── Schema builder ── */
+    .builder-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
+    .builder-status.error { color: #dc2626; }
+    .builder-section { display: none; margin-top: 16px; }
+    .builder-section.show { display: block; }
+    .builder-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .builder-title small { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+
+    .question {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; margin-bottom: 8px; background: var(--surface);
+    }
+    .question.needs-answer { border-color: #f59e0b; background: #fffbeb; }
+    .question-text { font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+    .question-why { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 3px 0 8px; overflow-wrap: anywhere; }
+    .question-option {
+      display: flex; align-items: flex-start; gap: 8px; font-size: 13px;
+      padding: 4px 0; cursor: pointer; line-height: 1.4; overflow-wrap: anywhere;
+    }
+    .question-option input { margin-top: 3px; flex-shrink: 0; }
+    .suggested { font-size: 11px; color: var(--green); font-weight: 600; margin-left: 4px; white-space: nowrap; }
+
+    .decision-list { list-style: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .decision-list li { padding: 8px 12px; font-size: 12px; line-height: 1.5; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+    .decision-list li:first-child { border-top: 0; }
+    .decision-column { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-right: 6px; }
+    .decision-reason { color: var(--text-muted); display: block; }
+
+    .column-card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; margin-bottom: 8px; background: var(--surface);
+    }
+    .column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .column-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+    .column-required { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
+    .column-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .column-field { display: block; font-size: 11px; color: var(--text-muted); min-width: 0; }
+    .column-field.wide { grid-column: 1 / -1; }
+    .column-field input, .column-field select {
+      display: block; width: 100%; margin-top: 3px; padding: 6px 8px;
+      font-family: inherit; font-size: 12px; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px; outline: none;
+    }
+    .column-field input:focus, .column-field select:focus { border-color: #a1a1aa; }
+
+    details.advanced { margin-top: 16px; }
+    details.advanced summary { font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; margin-bottom: 10px; }
+
+    /* ── Step indicator ── */
+    .steps {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .step-item { display: flex; align-items: center; gap: 6px; }
+    .step-item.current { color: var(--text); font-weight: 600; }
+    .step-dot {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; border: 1px solid var(--border); background: var(--surface);
+    }
+    .step-item.current .step-dot { background: var(--text); border-color: var(--text); color: #fff; }
+    .step-item.done .step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+    .step-sep { color: var(--border); }
+
     /* ── Mode selector ── */
     .mode-group { display: flex; flex-direction: column; gap: 6px; }
     .mode-card { cursor: pointer; }
@@ -285,6 +350,13 @@
 
 <!-- ══ AGENT TAB ══ -->
 <div id="page-agent" class="page active">
+  <div class="steps">
+    <span class="step-item current"><span class="step-dot">1</span>Upload</span>
+    <span class="step-sep">/</span>
+    <span class="step-item "><span class="step-dot">2</span>Schema</span>
+    <span class="step-sep">/</span>
+    <span class="step-item "><span class="step-dot">3</span>Clean</span>
+  </div>
 
   <div class="card">
 
@@ -309,80 +381,11 @@
       </div>
     </div>
 
-    <!-- Rules + Schema -->
-    <div>
-      <div class="field-label">2 — Define Rules</div>
-      <p class="hint" style="margin-bottom:8px">Describe your rules in plain English, then click Generate.</p>
-      <textarea id="nl-rules" placeholder="e.g. price must be positive, email is required and must be valid, category must be Electronics or Sports..."></textarea>
-      <button id="infer-btn" onclick="generateSchema()" style="margin:8px 0;">
-        <span id="infer-text">Generate Schema from Rules</span>
-      </button>
+    <div class="builder-status error" id="upload-error"></div>
 
-      <div class="or-divider">or provide a schema directly</div>
-
-      <button class="btn-secondary" style="margin-bottom:10px;">
-        <input type="file" id="schema-file" accept=".json">
-        <span>Upload Schema JSON File</span>
-      </button>
-      <div id="schema-file-name"></div>
-
-      <div class="field-label" style="margin-bottom:6px; margin-top:4px;">
-        Schema JSON <span style="font-weight:400; text-transform:none; font-size:11px; color:var(--text-muted);">— editable</span>
-      </div>
-      <textarea id="schema-input" spellcheck="false">{
-  "name": "my_dataset",
-  "columns": {
-    "id":         { "dtype": "int",   "nullable": false },
-    "name":       { "dtype": "str",   "nullable": false },
-    "email":      { "dtype": "str",   "nullable": false, "pattern": ".+@.+\\..+" },
-    "age":        { "dtype": "int",   "nullable": false, "min_value": 18, "max_value": 100 },
-    "salary":     { "dtype": "float", "nullable": false, "min_value": 0 },
-    "department": { "dtype": "str",   "nullable": false, "allowed_values": ["Engineering", "Sales"] },
-    "start_date": { "dtype": "date",  "nullable": false }
-  }
-}</textarea>
-    </div>
-
-    <!-- Mode -->
-    <div>
-      <div class="field-label">3 — Choose Mode</div>
-      <div class="mode-group">
-        <label class="mode-card">
-          <input type="radio" name="mode" value="audit">
-          <div class="mode-body">
-            <div class="mode-dot"></div>
-            <div class="mode-info">
-              <div class="mode-name">Audit Only</div>
-              <div class="mode-desc">Validate and return an error report. Data is never changed.</div>
-            </div>
-          </div>
-        </label>
-        <label class="mode-card">
-          <input type="radio" name="mode" value="clean" checked>
-          <div class="mode-body">
-            <div class="mode-dot"></div>
-            <div class="mode-info">
-              <div class="mode-name">Clean + Report</div>
-              <div class="mode-desc">Fix safe errors automatically. Flag the rest for review.</div>
-            </div>
-          </div>
-        </label>
-        <label class="mode-card">
-          <input type="radio" name="mode" value="strict">
-          <div class="mode-body">
-            <div class="mode-dot"></div>
-            <div class="mode-info">
-              <div class="mode-name">Strict Clean</div>
-              <div class="mode-desc">Output only fully valid rows. Remove the rest.</div>
-            </div>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <button id="run-btn" onclick="startClean()">
+    <button id="run-btn" onclick="continueToSchema()" disabled>
       <div class="spinner"></div>
-      <span id="btn-text">Run Agent</span>
+      <span id="btn-text">Continue to Schema</span>
     </button>
 
   </div>
@@ -396,7 +399,7 @@
   <div class="guide-section" style="margin-top:32px">
     <h2>Quick Start</h2>
     <div class="step-row"><div class="step-num-sm">1</div><div class="step-text">Prepare your CSV — any spreadsheet exported as CSV works.</div></div>
-    <div class="step-row"><div class="step-num-sm">2</div><div class="step-text">Describe your rules in plain English, upload a schema JSON file, or write one directly.</div></div>
+    <div class="step-row"><div class="step-num-sm">2</div><div class="step-text">On the next page, answer our questions about your file and adjust the columns. You can also add rules in plain English or use a schema JSON file.</div></div>
     <div class="step-row"><div class="step-num-sm">3</div><div class="step-text">Select a mode, then click <strong>Run Agent</strong>.</div></div>
     <div class="step-row"><div class="step-num-sm">4</div><div class="step-text">You'll be taken to a results page where you can watch the agent work in real time and download the output when done.</div></div>
   </div>
@@ -531,6 +534,8 @@
     selectedFile = f;
     fileNameEl.textContent = f.name;
     fileBadge.classList.add('show');
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('upload-error').textContent = '';
 
     // Remove any previous size warning
     const prev = document.getElementById('size-warning');
@@ -562,86 +567,28 @@
     reader.readAsText(f);
   }
 
-  // Schema file upload — reads a .json file straight into the schema textarea
-  document.getElementById('schema-file').addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const nameEl = document.getElementById('schema-file-name');
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target.result);
-        const ta = document.getElementById('schema-input');
-        ta.value = JSON.stringify(parsed, null, 2);
-        ta.style.borderColor = '#a1a1aa';
-        setTimeout(() => { ta.style.borderColor = ''; }, 1000);
-        nameEl.textContent = `Loaded: ${f.name}`;
-        nameEl.style.color = 'var(--text-muted)';
-      } catch (err) {
-        nameEl.textContent = `Could not parse ${f.name}: ${err.message}`;
-        nameEl.style.color = '#dc2626';
-      }
-    };
-    reader.readAsText(f);
-  });
+  async function continueToSchema() {
+    const btn = document.getElementById('run-btn');
+    const btnText = document.getElementById('btn-text');
+    const error = document.getElementById('upload-error');
+    if (!selectedFile) return;
 
-  async function generateSchema() {
-    if (!selectedFile) { alert('Upload a CSV first so we can read the column names.'); return; }
-    const rules = document.getElementById('nl-rules').value.trim();
-    if (!rules) { alert('Enter some rules first.'); return; }
-
-    const btn  = document.getElementById('infer-btn');
-    const text = document.getElementById('infer-text');
     btn.disabled = true;
-    text.textContent = 'Generating...';
+    btn.classList.add('running');
+    btnText.textContent = 'Uploading...';
+    error.textContent = '';
 
     try {
       const form = new FormData();
       form.append('csv_file', selectedFile);
-      form.append('rules', rules);
-      const res = await fetch('/infer-schema', { method: 'POST', body: form });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Failed'); }
-      const schemaDict = await res.json();
-      const ta = document.getElementById('schema-input');
-      ta.value = JSON.stringify(schemaDict, null, 2);
-      ta.style.borderColor = '#a1a1aa';
-      setTimeout(() => { ta.style.borderColor = ''; }, 1000);
-    } catch(e) {
-      alert('Could not generate schema:\n' + e.message);
-    } finally {
-      btn.disabled = false;
-      text.textContent = 'Generate Schema from Rules';
-    }
-  }
-
-  async function startClean() {
-    if (!selectedFile) { alert('Please select a CSV file first.'); return; }
-
-    const schemaText = document.getElementById('schema-input').value.trim();
-    try { JSON.parse(schemaText); } catch(e) { alert('Schema JSON is invalid:\n' + e.message); return; }
-
-    const btn  = document.getElementById('run-btn');
-    const btnText = document.getElementById('btn-text');
-    btn.disabled = true;
-    btn.classList.add('running');
-    btnText.textContent = 'Starting...';
-
-    const mode = document.querySelector('input[name="mode"]:checked').value;
-    const form = new FormData();
-    form.append('csv_file', selectedFile);
-    form.append('schema_json', schemaText);
-    form.append('mode', mode);
-
-    try {
-      const res = await fetch('/clean', { method: 'POST', body: form });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Server error'); }
-      const jobId = (await res.json()).job_id;
-      window.location.href = `/results?job=${jobId}`;
-    } catch(e) {
-      alert('Could not start job:\n' + e.message);
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
+      window.location.href = `/schema?upload=${(await res.json()).upload_id}`;
+    } catch (e) {
+      error.textContent = e.message;
       btn.disabled = false;
       btn.classList.remove('running');
-      btnText.textContent = 'Run Agent';
+      btnText.textContent = 'Continue to Schema';
     }
   }
 </script>

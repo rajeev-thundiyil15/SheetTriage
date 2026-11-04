@@ -1,0 +1,10 @@
+{
+  "name": "customers",
+  "columns": {
+    "customer_id": { "dtype": "int",  "nullable": false },
+    "name":        { "dtype": "str",  "nullable": false },
+    "email":       { "dtype": "str",  "nullable": false, "pattern": ".+@.+\\..+" },
+    "country":     { "dtype": "str",  "nullable": false, "allowed_values": ["USA", "Canada", "UK", "Germany", "France"] },
+    "signup_date": { "dtype": "date", "nullable": false }
+  }
+}

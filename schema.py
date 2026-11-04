@@ -1,17 +1,18 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel
 
 
 class ColumnSchema(BaseModel):
-    dtype: str  # "int", "float", "str", "date"
+    dtype: Literal["int", "float", "str", "date"]
     nullable: bool = False
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     allowed_values: Optional[list[str]] = None
     pattern: Optional[str] = None  # regex
+    date_format: Optional[Literal["YMD", "DMY", "MDY"]] = None  # unset: ambiguous dates get flagged
 
 
 class DataSchema(BaseModel):
@@ -39,6 +40,8 @@ class DataSchema(BaseModel):
                 parts.append(f"one of {spec.allowed_values}")
             if spec.pattern:
                 parts.append(f"pattern={spec.pattern}")
+            if spec.date_format:
+                parts.append(f"date_format={spec.date_format}")
             lines.append(", ".join(parts))
         return "\n".join(lines)
 
