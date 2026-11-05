@@ -33,3 +33,25 @@ test('a user uploads a CSV, runs the agent, and reviews the flagged row', async 
     await expect(page.getByRole('link', { name: 'Download Output CSV' })).toBeVisible();
   });
 });
+
+test('refreshing the results page keeps the review', async ({ page }) => {
+  await test.step('upload the file and run the agent', async () => {
+    await page.goto('/app');
+    await page.locator('#csv-file').setInputFiles(ORDERS_CSV);
+    await page.getByRole('button', { name: 'Continue to Schema' }).click();
+    await expect(page.locator('#columns-section')).toBeVisible();
+    await page.getByRole('button', { name: 'Run Agent' }).click();
+    await expect(page.locator('#status-badge')).toHaveText('done');
+  });
+
+  await test.step('refresh the page', async () => {
+    await page.reload();
+  });
+
+  await test.step('check the results are still there', async () => {
+    await expect(page.locator('#summary-headline')).toHaveText('9 of 10 rows are clean.');
+    await expect(page.locator('.review-table td.cell-flagged')).toHaveText('not-an-email');
+    await expect(page.getByRole('link', { name: 'Download Output CSV' })).toBeVisible();
+    await expect(page.locator('#log-body')).not.toContainText('Connection to server lost');
+  });
+});
