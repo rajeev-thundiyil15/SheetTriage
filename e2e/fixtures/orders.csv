@@ -1,0 +1,11 @@
+id,customer,email,quantity
+1,Ana Silva,ana@example.com,2
+2,Ben Okafor,ben@example.com,1
+3,Chloe Tan,not-an-email,4
+4,Dev Patel,dev@example.com,3
+5,Elena Rossi,elena@example.com,2
+6,Farid Khan,farid@example.com,5
+7,Grace Lee,grace@example.com,1
+8,Hugo Martin,hugo@example.com,2
+9,Isla Brown,isla@example.com,6
+10,Jonas Weber,jonas@example.com,2
