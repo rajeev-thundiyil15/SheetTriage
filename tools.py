@@ -349,7 +349,10 @@ def save_with_report(
     Path(report_path).parent.mkdir(parents=True, exist_ok=True)
 
     col_counts = Counter(e["column"] for e in log)
-    issue_counts = Counter((e["column"], e["error"]) for e in log)
+    # Leave the cell's own value out, so the same problem on different values counts as one issue.
+    issue_counts = Counter(
+        (e["column"], e["error"].replace(f"'{e['original_value']}'", "a value", 1)) for e in log
+    )
     top_issues = [
         {"column": col, "issue": issue, "count": count}
         for (col, issue), count in issue_counts.most_common(15)

@@ -636,7 +636,7 @@
         fields.append(field('Date order', selectInput(
           [['', 'Not chosen: flag unclear dates'], ['YMD', 'Year first (2024-04-03)'], ['DMY', 'Day first (03/04/2024)'], ['MDY', 'Month first (04/03/2024)']],
           spec.date_format ?? '',
-          value => setField(name, 'date_format', value))));
+          value => setField(name, 'date_format', value)), true));
       } else {
         fields.append(
           field('Allowed values, separated by commas', textInput(

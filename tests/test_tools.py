@@ -420,6 +420,19 @@ def test_breakdown_matches_the_error_log(tmp_path):
     assert result["rows_with_errors"] == 3
 
 
+def test_the_same_problem_on_different_values_counts_as_one_issue(tmp_path):
+    load(a=["x", "O'Brien", "z"])
+    t.bulk_mark_errors([
+        {"row_index": 0, "column_name": "a", "issue": "cannot convert 'x' to int"},
+        {"row_index": 1, "column_name": "a", "issue": "cannot convert 'O'Brien' to int"},
+        {"row_index": 2, "column_name": "a", "issue": "cannot convert 'z' to int"},
+    ])
+
+    result = save(tmp_path)
+
+    assert result["top_issues"] == [{"column": "a", "issue": "cannot convert a value to int", "count": 3}]
+
+
 def test_top_issues_lists_at_most_15(tmp_path):
     load(a=list(range(20)))
     t.bulk_mark_errors([{"row_index": i, "column_name": "a", "issue": f"issue {i}"} for i in range(20)])

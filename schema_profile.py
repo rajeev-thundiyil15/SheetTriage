@@ -17,6 +17,7 @@ from tools import NUMERIC_DATE, YEAR_FIRST_DATE
 
 MAX_QUESTIONS = 5
 MAX_LIST_VALUES = 20
+FREE_TEXT_NAME = re.compile(r"(?:^|[\W_])(?:notes?|comments?|remarks?|descriptions?|memo|feedback|details?)(?:$|[\W_])", re.IGNORECASE)
 FUZZY_MATCH = 0.8
 TEXT_DATE = re.compile(r"^([A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9}\.? \d{4})$")
 
@@ -199,7 +200,7 @@ def _text_findings(column: str, values: list[str]) -> tuple[dict, list[dict], li
                 {"label": f"Yes, only these {len(canonical)}", "patch": {"allowed_values": canonical}},
                 {"label": "No, allow any text", "patch": {"allowed_values": None}},
             ],
-            "recommended": 0,
+            "recommended": 1 if FREE_TEXT_NAME.search(column) else 0,
         })
     return patch, decisions, questions
 

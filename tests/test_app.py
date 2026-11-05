@@ -100,6 +100,18 @@ def test_placeholder_text_is_not_treated_as_blank(client):
     assert "1 row(s)" in questions["blank:pay"]
 
 
+def test_stream_replays_the_whole_run_on_every_connection(client):
+    events = [{"type": "start"}, {"type": "summary", "clean_rows": 2}, {"type": "done"}]
+    web._jobs["j"] = {"events": events, "output_path": "x.csv", "done": True, "created_at": time.time()}
+
+    first = client.get("/stream/j").text
+    second = client.get("/stream/j").text
+
+    assert first == second
+    assert first.count("data: ") == 3
+    assert '"type": "done"' in second
+
+
 def test_clean_runs_the_agent_on_the_stored_upload(client, monkeypatch):
     received = {}
 

@@ -81,6 +81,18 @@ def test_two_common_similar_values_are_not_merged():
     assert question(draft, "allowed:status")["options"][0]["patch"]["allowed_values"] == ["Female", "Male"]
 
 
+@pytest.mark.parametrize("name", ["notes", "Order Notes", "customer_comment", "Description"])
+def test_free_text_columns_default_to_any_text(name):
+    draft = scan(**{name: ["Late"] * 15 + ["Ok"] * 15})
+
+    assert question(draft, f"allowed:{name}")["recommended"] == 1
+    assert draft["schema"]["columns"][name].get("allowed_values") is None
+
+
+def test_a_name_that_only_contains_a_free_text_word_keeps_the_list():
+    assert question(scan(denotes=["a"] * 15 + ["b"] * 15), "allowed:denotes")["recommended"] == 0
+
+
 def test_free_text_is_not_treated_as_a_list():
     draft = scan(note=[f"note {i}" for i in range(30)])
 

@@ -10,7 +10,6 @@ import asyncio
 import io
 import json
 import os
-import queue
 import threading
 import time
 import uuid
@@ -49,7 +48,7 @@ MAX_STORED_UPLOADS = int(os.getenv("MAX_STORED_UPLOADS", "20"))
 # upload_id → {contents, filename, rows, columns, created_at}
 _uploads: dict[str, dict] = {}
 
-# job_id → {queue, output_path, done, error, created_at}
+# job_id → {events, output_path, done, error, created_at}
 _jobs: dict[str, dict] = {}
 _job_lock = threading.Lock()
 _active_job: str | None = None
@@ -199,10 +198,10 @@ async def clean(
 
     job_id = str(uuid.uuid4())
     output_path = f"data/{job_id}_clean.csv"
-    log_queue: queue.Queue = queue.Queue()
+    events: list[dict] = []
 
     _jobs[job_id] = {
-        "queue": log_queue,
+        "events": events,
         "output_path": output_path,
         "contents": contents,
         "done": False,
@@ -214,14 +213,14 @@ async def clean(
 
     def run():
         try:
-            run_agent(df, schema, output_path=output_path, mode=mode, on_log=log_queue.put)
+            run_agent(df, schema, output_path=output_path, mode=mode, on_log=events.append)
             _jobs[job_id]["issues"] = tools.get_error_log()
             _jobs[job_id]["done"] = True
             report_url = f"/download/{job_id}?file=report"
-            log_queue.put({"type": "done", "download_url": f"/download/{job_id}", "report_url": report_url})
+            events.append({"type": "done", "download_url": f"/download/{job_id}", "report_url": report_url})
         except Exception as exc:
             _jobs[job_id]["done"] = True
-            log_queue.put({"type": "error", "message": str(exc)})
+            events.append({"type": "error", "message": str(exc)})
 
     threading.Thread(target=run, daemon=True).start()
     return {"job_id": job_id}
@@ -232,21 +231,20 @@ async def stream(job_id: str):
     if job_id not in _jobs:
         raise HTTPException(404, "Job not found")
 
-    job = _jobs[job_id]
-    q: queue.Queue = job["queue"]
+    events: list[dict] = _jobs[job_id]["events"]
 
+    # Every connection replays the run from the start, so refreshing the page loses nothing.
     async def generate():
-        loop = asyncio.get_event_loop()
+        sent = 0
         while True:
-            try:
-                msg = await loop.run_in_executor(None, lambda: q.get(timeout=0.3))
+            while sent < len(events):
+                msg = events[sent]
+                sent += 1
                 yield f"data: {json.dumps(msg)}\n\n"
                 if msg.get("type") in ("done", "error"):
-                    break
-            except queue.Empty:
-                if job["done"]:
-                    break
-                yield ": keepalive\n\n"
+                    return
+            yield ": keepalive\n\n"
+            await asyncio.sleep(0.3)
 
     return StreamingResponse(
         generate(),

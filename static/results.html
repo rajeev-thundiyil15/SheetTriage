@@ -455,9 +455,17 @@
       const row = document.createElement('div');
       row.className = 'col-row';
       row.dataset.status = status;
-      row.innerHTML = `<span class="col-dot"></span><span class="col-name">${col}</span><span class="col-state">${STATUS_LABEL[status] || status}</span>`;
+      row.append(textSpan('col-dot'), textSpan('col-name', col), textSpan('col-state', STATUS_LABEL[status] || status));
       list.appendChild(row);
     }
+  }
+
+  // Column names and issues come from the uploaded file, so they only ever go in as text.
+  function textSpan(className, text = '') {
+    const span = document.createElement('span');
+    span.className = className;
+    span.textContent = text;
+    return span;
   }
 
   // Replaces the live in-progress checklist with the final per-column outcome,
@@ -473,7 +481,7 @@
       const row = document.createElement('div');
       row.className = 'col-row';
       row.dataset.status = status;
-      row.innerHTML = `<span class="col-dot"></span><span class="col-name">${col}</span><span class="col-state">${label}</span>`;
+      row.append(textSpan('col-dot'), textSpan('col-name', col), textSpan('col-state', label));
       list.appendChild(row);
     }
   }
@@ -505,7 +513,7 @@
       for (const item of topIssues) {
         const row = document.createElement('div');
         row.className = 'issue-row';
-        row.innerHTML = `<span class="issue-count">${item.count.toLocaleString()}×</span><span>${item.column} — ${item.issue}</span>`;
+        row.append(textSpan('issue-count', `${item.count.toLocaleString()}×`), textSpan('', `${item.column} — ${item.issue}`));
         issuesRows.appendChild(row);
       }
       issuesList.style.display = 'flex';
@@ -686,9 +694,15 @@
       appendLog(msg);
       if (msg.type === 'done' || msg.type === 'error') es.close();
     };
-    es.onerror = () => {
-      appendLog({ type: 'error', message: 'Connection to server lost.' });
+    es.onerror = async () => {
       es.close();
+      const res = await fetch(`/review/${encodeURIComponent(id)}`).catch(() => null);
+      appendLog({
+        type: 'error',
+        message: res && res.status === 404
+          ? 'This run is no longer available. Runs are kept for about an hour, and a server restart clears them. Please upload your file again.'
+          : 'Connection to server lost. Refresh this page to reconnect.',
+      });
     };
   }
 </script>
