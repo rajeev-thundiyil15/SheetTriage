@@ -37,7 +37,7 @@ Path("static").mkdir(exist_ok=True)
 # Upload limits — keep runs bounded on a free-tier instance (cost + memory).
 # Override via env vars if you move to a bigger plan.
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "5"))
-MAX_UPLOAD_ROWS = int(os.getenv("MAX_UPLOAD_ROWS", "5000"))
+MAX_UPLOAD_ROWS = int(os.getenv("MAX_UPLOAD_ROWS", "30000"))
 
 # How long a finished job's output files stick around before being swept.
 JOB_FILE_TTL_SECONDS = int(os.getenv("JOB_FILE_TTL_SECONDS", str(60 * 60)))
@@ -64,7 +64,7 @@ def _enforce_upload_limits(contents: bytes, df: pd.DataFrame) -> None:
     if size_mb > MAX_UPLOAD_MB:
         raise HTTPException(413, f"File is {size_mb:.1f}MB — limit is {MAX_UPLOAD_MB}MB.")
     if len(df) > MAX_UPLOAD_ROWS:
-        raise HTTPException(413, f"File has {len(df)} rows — limit is {MAX_UPLOAD_ROWS} rows.")
+        raise HTTPException(413, f"File has {len(df):,} rows — limit is {MAX_UPLOAD_ROWS:,} rows.")
 
 
 def _cleanup_old_jobs() -> None:
