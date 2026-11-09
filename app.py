@@ -68,6 +68,23 @@ def _enforce_upload_limits(contents: bytes, df: pd.DataFrame) -> None:
         raise HTTPException(413, f"File has {len(df):,} rows — limit is {MAX_UPLOAD_ROWS:,} rows.")
 
 
+def _run_error_message(exc: Exception) -> str:
+    """What the results page says when a run stops, without the raw API error."""
+    status = getattr(exc, "status_code", None)
+    name = type(exc).__name__
+    if status in (529, 503) or "Overloaded" in name:
+        return "Claude is overloaded right now, so the run stopped. Please try again in a few minutes."
+    if status == 429:
+        return "The service has reached its usage limit for now, so the run stopped. Please try again later."
+    if status in (401, 403):
+        return "The server's connection to Claude isn't set up correctly, so the run couldn't start."
+    if status == 400 and "credit" in str(exc).lower():
+        return "The service has reached its spending limit, so the run stopped. Please try again later."
+    if "Connection" in name or "Timeout" in name:
+        return "The server couldn't reach Claude, so the run stopped. Please try again in a few minutes."
+    return f"The run stopped because of an unexpected error: {exc}"
+
+
 def _cleanup_old_jobs() -> None:
     """Delete finished jobs' output files once they're older than the TTL, and
     drop their entries so _jobs doesn't grow unbounded over the process lifetime."""
@@ -227,7 +244,7 @@ async def clean(
             events.append({"type": "done", "download_url": f"/download/{job_id}", "report_url": report_url})
         except Exception as exc:
             _jobs[job_id]["done"] = True
-            events.append({"type": "error", "message": str(exc)})
+            events.append({"type": "error", "message": _run_error_message(exc)})
 
     threading.Thread(target=run, daemon=True).start()
     return {"job_id": job_id}

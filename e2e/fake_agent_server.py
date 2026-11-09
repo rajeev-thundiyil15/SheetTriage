@@ -19,6 +19,20 @@ from agent import derive_report_path  # noqa: E402
 PORT = 8010
 STEP_SECONDS = 0.1
 
+# A column with one of these names in a test file changes how the scripted run behaves.
+FAIL_COLUMN = "simulate_api_overloaded"  # the run stops the way an overloaded Claude API stops it
+SLOW_COLUMN = "simulate_slow_run"  # each step takes SLOW_STEP_SECONDS, so a second run can be tried
+SLOW_STEP_SECONDS = 1.0
+
+
+class OverloadedError(Exception):
+    """Stands in for the SDK's error: the app only reads the status code, as it does for the real one."""
+    status_code = 529
+
+
+def _overloaded_error():
+    return OverloadedError("Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error'}}")
+
 
 def fake_run_agent(df, schema, output_path, mode, on_log):
     """Flags every schema violation, then saves, sending the events a real run sends."""
@@ -26,9 +40,12 @@ def fake_run_agent(df, schema, output_path, mode, on_log):
     columns = list(schema.columns)
     on_log({"type": "start"})
 
+    step_seconds = SLOW_STEP_SECONDS if SLOW_COLUMN in df.columns else STEP_SECONDS
     flagged = 0
     for step, column in enumerate(columns, start=1):
-        time.sleep(STEP_SECONDS)
+        time.sleep(step_seconds)
+        if FAIL_COLUMN in df.columns and step == 2:
+            raise _overloaded_error()
         on_log({"type": "iteration", "n": step})
         on_log({"type": "tool_call", "name": "mark_remaining_violations", "input_summary": f"Checking {column}"})
         flagged += json.loads(tools.mark_remaining_violations(column, schema))["marked"]

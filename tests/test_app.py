@@ -161,3 +161,43 @@ def test_upload_refuses_files_it_cannot_read_safely(client, contents, message):
     assert response.status_code == 400
     assert message in response.json()["detail"]
     assert not web._uploads
+
+
+def _api_error(cls_name, status, message="error"):
+    import anthropic
+    import httpx
+    response = httpx.Response(status, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    return getattr(anthropic, cls_name)(message, response=response, body=None)
+
+
+@pytest.mark.parametrize("make_error, expected", [
+    (lambda: _api_error("InternalServerError", 529), "overloaded"),
+    (lambda: _api_error("RateLimitError", 429), "usage limit"),
+    (lambda: _api_error("AuthenticationError", 401), "isn't set up correctly"),
+    (lambda: _api_error("BadRequestError", 400, "Your credit balance is too low"), "spending limit"),
+    (lambda: RuntimeError("disk full"), "unexpected error: disk full"),
+])
+def test_run_errors_are_explained_in_plain_words(make_error, expected):
+    message = web._run_error_message(make_error())
+
+    assert expected in message
+    assert "Error code" not in message
+
+
+def test_a_failed_run_ends_with_a_plain_error_event(client, monkeypatch):
+    def failing_agent(*args, on_log, **kwargs):
+        on_log({"type": "start"})
+        raise _api_error("InternalServerError", 529)
+    monkeypatch.setattr(web, "run_agent", failing_agent)
+    upload_id = upload(client).json()["upload_id"]
+    schema = '{"name": "t", "columns": {"id": {"dtype": "int"}}}'
+
+    job_id = client.post("/clean", data={"upload_id": upload_id, "schema_json": schema}).json()["job_id"]
+    for _ in range(50):
+        if web._jobs[job_id]["done"]:
+            break
+        time.sleep(0.05)
+
+    last = web._jobs[job_id]["events"][-1]
+    assert last["type"] == "error"
+    assert "overloaded" in last["message"]
