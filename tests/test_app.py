@@ -130,3 +130,34 @@ def test_clean_runs_the_agent_on_the_stored_upload(client, monkeypatch):
         time.sleep(0.01)
 
     assert received == {"rows": 2, "mode": "strict", "date_format": "DMY"}
+
+
+# Files as Excel and other tools save them
+
+@pytest.mark.parametrize("contents, columns, first_row", [
+    ("name,city\nJosé,München\n".encode("cp1252"), ["name", "city"], ["José", "München"]),
+    ("﻿name,age\nAna,30\n".encode("utf-8"), ["name", "age"], ["Ana", "30"]),
+    (b"name;age;city\nAna;30;Rome\n", ["name", "age", "city"], ["Ana", "30", "Rome"]),
+    (b"name\tage\nAna\t30\n", ["name", "age"], ["Ana", "30"]),
+    (b'name,amount\n"Silva; Ana","1;5"\n', ["name", "amount"], ["Silva; Ana", "1;5"]),
+    (b"a,b\n1,2,,\n", ["a", "b"], ["1", "2"]),
+])
+def test_upload_reads_common_csv_variants(client, contents, columns, first_row):
+    body = upload(client, contents).json()
+
+    assert body["columns"] == columns
+    assert web._read_csv(web._uploads[body["upload_id"]]["contents"], dtype=str).iloc[0].tolist() == first_row
+
+
+@pytest.mark.parametrize("contents, message", [
+    (b"", "empty"),
+    (b"a,b,c\n", "no data rows"),
+    (b"a,b\n1,2\n3,4,5,6\n", "Row 3 has 4 values"),
+    (b"\x00\x01\x02binary", "doesn't look like a CSV"),
+])
+def test_upload_refuses_files_it_cannot_read_safely(client, contents, message):
+    response = upload(client, contents)
+
+    assert response.status_code == 400
+    assert message in response.json()["detail"]
+    assert not web._uploads

@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 import tools
 from agent import run_agent, derive_report_path
+from csv_input import normalize_csv
 from review import build_review
 from schema import DataSchema
 from schema_infer import infer_schema
@@ -130,13 +131,19 @@ async def upload_csv(csv_file: UploadFile = File(...)):
     """Check and hold a CSV so the schema and results pages can use it by id."""
     _cleanup_old_jobs()
 
+    raw = await csv_file.read()
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > MAX_UPLOAD_MB:
+        raise HTTPException(413, f"File is {size_mb:.1f}MB — limit is {MAX_UPLOAD_MB}MB.")
     try:
-        contents = await csv_file.read()
+        contents, _ = normalize_csv(raw)
         df = _read_csv(contents)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"Could not read CSV: {e}")
 
-    _enforce_upload_limits(contents, df)
+    _enforce_upload_limits(raw, df)
 
     while len(_uploads) >= MAX_STORED_UPLOADS:
         _uploads.pop(min(_uploads, key=lambda u: _uploads[u]["created_at"]))
