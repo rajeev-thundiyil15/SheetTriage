@@ -42,12 +42,12 @@ TOOL_DEFINITIONS = [
         "name": "validate_column",
         "description": (
             "Validate one column against the schema. Returns violations GROUPED by "
-            "the exact issue text — each group has 'issue', 'count', and the full "
-            "'rows' list of row indices with that issue. A typo repeated 40 times is "
-            "one group with 40 rows, not 40 separate entries. 'total_violations' is "
-            "the true total across all groups. When fixing or marking, use each "
-            "group's full 'rows' list — never assume rows outside it are clean. To mark "
-            "rows, use mark_remaining_violations, which works the rows out itself."
+            "the exact issue text — each group has 'issue', its true 'count', and up to "
+            "5 'example_rows'. A typo repeated 40 times is one group with count 40, "
+            "not 40 separate entries. 'total_violations' is the true total across all "
+            "groups. If a 'note' says not every group is shown, handle these and "
+            "validate again to see the rest. To mark rows, use "
+            "mark_remaining_violations, which works the rows out itself."
         ),
         "input_schema": {
             "type": "object",

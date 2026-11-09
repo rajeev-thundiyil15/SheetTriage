@@ -64,13 +64,21 @@ def inspect_data() -> str:
 # Validation
 # ---------------------------------------------------------------------------
 
+MAX_GROUPS_SHOWN = 40
+MAX_EXAMPLE_ROWS = 5
+MAX_GROUPS_CHARS = 3200  # leaves room for the rest of the result under the agent's 4,000
+
+
 def validate_column(column_name: str, schema: DataSchema) -> str:
     """
-    Returns violations grouped by the exact issue text, each with the full list of
-    row indices that have it — e.g. one group for "cannot convert 'sixty five' to
-    float" covering 40 rows, instead of 40 near-identical entries. Keeps the payload
-    small on files with many repeated errors (the common case) without ever dropping
-    a row: every violating row index appears in exactly one group.
+    Returns violations grouped by the exact issue text, each with its true count and a
+    few example row indices — e.g. one group for "cannot convert 'sixty five' to float"
+    covering 40 rows, instead of 40 near-identical entries.
+
+    The agent only sees the first 4,000 characters of a result, so the output is kept
+    under that whatever the file size: full row lists on a 30,000-row file once pushed
+    smaller groups past the cut-off, and the agent never saw them. Rows are marked on
+    the server by mark_remaining_violations, so the agent never needs the full list.
     """
     df: pd.DataFrame = _state["df"]
 
@@ -89,28 +97,37 @@ def validate_column(column_name: str, schema: DataSchema) -> str:
 
     groups: dict[str, dict] = {}
     for row_idx, issue in flat:
-        g = groups.setdefault(issue, {"issue": issue, "count": 0, "rows": []})
+        g = groups.setdefault(issue, {"issue": issue, "count": 0, "example_rows": []})
         g["count"] += 1
-        g["rows"].append(row_idx)
+        if len(g["example_rows"]) < MAX_EXAMPLE_ROWS:
+            g["example_rows"].append(row_idx)
 
     group_list = sorted(groups.values(), key=lambda g: -g["count"])
 
-    MAX_GROUPS_SHOWN = 40
+    shown: list[dict] = []
+    size = 0
+    for g in group_list[:MAX_GROUPS_SHOWN]:
+        g_size = len(json.dumps(g)) + 2
+        if shown and size + g_size > MAX_GROUPS_CHARS:
+            break
+        shown.append(g)
+        size += g_size
+
     result = {
         "column": column_name,
         "total_violations": len(flat),
         "distinct_issue_groups": len(group_list),
-        "groups": group_list[:MAX_GROUPS_SHOWN],
+        "groups": shown,
     }
-    if len(group_list) > MAX_GROUPS_SHOWN:
+    if len(shown) < len(group_list):
         result["note"] = (
-            f"Showing the {MAX_GROUPS_SHOWN} most common of {len(group_list)} distinct issue "
+            f"Showing the {len(shown)} most common of {len(group_list)} distinct issue "
             "groups. After fixing or marking these, call validate_column again on this column — "
             "already-handled rows are skipped automatically, so the next-most-common remaining "
             "groups will surface."
         )
 
-    return json.dumps(result, indent=2)
+    return json.dumps(result)
 
 
 # ---------------------------------------------------------------------------

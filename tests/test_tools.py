@@ -40,7 +40,7 @@ def test_validate_groups_rows_by_issue_text():
     top = result["groups"][0]
     assert top["issue"] == "cannot convert 'abc' to float"
     assert top["count"] == 2
-    assert top["rows"] == [0, 1]
+    assert top["example_rows"] == [0, 1]
 
 
 def test_validate_caps_groups_at_40_and_adds_note():
@@ -61,6 +61,34 @@ def test_validate_shows_no_note_at_exactly_40_groups():
     assert "note" not in result
 
 
+def test_validate_lists_a_few_example_rows_with_the_true_count():
+    load(price=["abc"] * 500)
+    group = validate("price", schema_of(price={"dtype": "float"}))["groups"][0]
+
+    assert group["count"] == 500
+    assert group["example_rows"] == [0, 1, 2, 3, 4]
+
+
+def test_validate_shows_every_group_on_a_large_file():
+    # The 30,000-row run: full row lists pushed 'usa' past the agent's 4,000-character cut-off.
+    values = ["U.S."] * 1460 + ["Untied Kingdom"] * 1270 + ["usa"] * 440 + ["uk"] * 220 + ["USA"] * 1000
+    load(country=values)
+    out = t.validate_column("country", schema_of(country={"dtype": "str", "allowed_values": ["USA", "UK"]}))
+
+    assert len(out) < 4000
+    assert [g["count"] for g in json.loads(out)["groups"]] == [1460, 1270, 440, 220]
+
+
+def test_validate_keeps_long_results_under_the_cut_off_and_says_so():
+    load(code=[f"value-{i}-" + "x" * 120 for i in range(40)])
+    out = t.validate_column("code", schema_of(code={"dtype": "str", "allowed_values": ["A"]}))
+    result = json.loads(out)
+
+    assert len(out) < 4000
+    assert len(result["groups"]) < 40
+    assert f"{len(result['groups'])} most common of 40" in result["note"]
+
+
 def test_validate_skips_rows_already_marked_for_that_column():
     load(price=["abc", "xyz"])
     schema = schema_of(price={"dtype": "float"})
@@ -69,7 +97,7 @@ def test_validate_skips_rows_already_marked_for_that_column():
     result = validate("price", schema)
 
     assert result["total_violations"] == 1
-    assert result["groups"][0]["rows"] == [1]
+    assert result["groups"][0]["example_rows"] == [1]
 
 
 def test_validate_still_checks_a_row_marked_on_a_different_column():
@@ -99,8 +127,8 @@ def test_validate_range_allowed_values_and_pattern():
         "value 101 is above max 100.0",
         "value 17 is below min 18.0",
     ]
-    assert validate("dept", schema)["groups"][0]["rows"] == [1]
-    assert validate("email", schema)["groups"][0]["rows"] == [1]
+    assert validate("dept", schema)["groups"][0]["example_rows"] == [1]
+    assert validate("email", schema)["groups"][0]["example_rows"] == [1]
 
 
 def test_validate_reports_unknown_columns_as_errors():
@@ -347,7 +375,7 @@ def test_mark_remaining_only_issue_leaves_other_groups():
     result = json.loads(t.mark_remaining_violations("a", schema, only_issue="cannot convert 'x' to int"))
 
     assert result["marked"] == 1
-    assert validate("a", schema)["groups"][0]["rows"] == [1]
+    assert validate("a", schema)["groups"][0]["example_rows"] == [1]
 
 
 def test_mark_remaining_rejects_unknown_columns():
