@@ -78,8 +78,10 @@ TOOL_DEFINITIONS = [
         "name": "fix_allowed_values",
         "description": (
             "Replace disallowed values with their correct counterparts. "
-            "Use for typos and casing errors where the correct value is obvious "
+            "Use only for typos and casing errors where the correct value is obvious "
             "(e.g. 'Electronis' → 'Electronics', 'sports' → 'Sports'). "
+            "Never map a value to a different allowed value it merely resembles in meaning "
+            "(e.g. 'Early Bird' → 'General', 'U.S.' → 'USA'): those are refused and must be flagged. "
             "Pass replacements as a dict mapping bad_value → correct_value."
         ),
         "input_schema": {
@@ -247,7 +249,11 @@ def _friendly_result(name: str, result_str: str) -> str:
 
     if name == "fix_allowed_values":
         n = data.get("total_cells_changed", 0)
-        return f"Corrected {n:,} value(s)"
+        refused = len(data.get("refused", {}))
+        summary = f"Corrected {n:,} value(s)"
+        if refused:
+            summary += f"; {refused} value(s) aren't simple typos, so they'll be flagged instead"
+        return summary
 
     if name == "fill_null":
         return data.get("message", "Done")
@@ -282,7 +288,12 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
                 col_schema.date_format if col_schema else None,
             )
         if name == "fix_allowed_values":
-            return t.fix_allowed_values(inputs["column_name"], inputs["replacements"])
+            col_schema = schema.columns.get(inputs["column_name"])
+            return t.fix_allowed_values(
+                inputs["column_name"],
+                inputs["replacements"],
+                (col_schema.allowed_values or []) if col_schema else [],
+            )
         if name == "fill_null":
             return t.fill_null(inputs["column_name"], inputs["fill_value"])
         if name == "bulk_mark_errors":

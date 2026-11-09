@@ -13,6 +13,7 @@ import re
 import json
 import pandas as pd
 from collections import Counter
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -265,23 +266,56 @@ def fix_dtype(column_name: str, target_dtype: str, date_format: str | None = Non
     })
 
 
-def fix_allowed_values(column_name: str, replacements: dict[str, str]) -> str:
-    """Replace disallowed values with correct ones (typos, casing, etc.)."""
+TYPO_SIMILARITY = 0.8  # 'Studnet'/'Student' scores 0.86; 'U.S.'/'USA' 0.57, 'Early Bird'/'General' 0.35
+
+
+def _is_typo_of(bad: str, good: str) -> bool:
+    """True when bad is good with different casing or spacing, or a close misspelling of it."""
+    a, b = " ".join(str(bad).casefold().split()), " ".join(str(good).casefold().split())
+    return a == b or SequenceMatcher(None, a, b).ratio() >= TYPO_SIMILARITY
+
+
+def fix_allowed_values(
+    column_name: str,
+    replacements: dict[str, str],
+    allowed_values: list | None = None,
+) -> str:
+    """
+    Replace disallowed values with correct ones (typos, casing, etc.).
+
+    With allowed_values given, a replacement only goes through when the new value is allowed
+    and the old one is a casing change or close misspelling of it. Anything else is a guess,
+    so it is refused and the value stays as written, to be flagged.
+    """
     df: pd.DataFrame = _state["df"]
     _state["validated_clean"].discard(column_name)
+    applied: dict[str, str] = {}
+    refused: dict[str, str] = {}
     total_replaced = 0
     for bad, good in replacements.items():
+        if allowed_values is not None:
+            if good not in allowed_values:
+                refused[bad] = f"'{good}' is not an allowed value"
+                continue
+            if not _is_typo_of(bad, good):
+                refused[bad] = f"'{bad}' is not a typo or casing change of '{good}'"
+                continue
+        applied[bad] = good
         mask = df[column_name] == bad
         count = int(mask.sum())
         if count:
             df.loc[mask, column_name] = good
             total_replaced += count
 
-    return json.dumps({
+    result = {
         "column": column_name,
-        "replacements_applied": replacements,
+        "replacements_applied": applied,
         "total_cells_changed": total_replaced,
-    })
+    }
+    if refused:
+        result["refused"] = refused
+        result["note"] = "Refused values were left unchanged. Flag them with mark_remaining_violations."
+    return json.dumps(result)
 
 
 def fill_null(column_name: str, fill_value: str) -> str:

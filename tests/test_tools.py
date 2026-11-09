@@ -188,6 +188,68 @@ def test_fix_allowed_values_changes_only_matching_cells():
     assert t.get_dataframe()["dept"].tolist() == ["HR", "HR", "Sales", "HR"]
 
 
+TICKETS = ["General", "VIP", "Student", "Speaker"]
+COUNTRIES = ["USA", "Canada", "UK", "Germany", "India"]
+
+
+@pytest.mark.parametrize("bad, good, allowed", [
+    ("vip", "VIP", TICKETS),
+    ("Studnet", "Student", TICKETS),
+    ("Genral", "General", TICKETS),
+    ("VIPP", "VIP", TICKETS),
+    (" general ", "General", TICKETS),
+    ("usa", "USA", COUNTRIES),
+    ("Germny", "Germany", COUNTRIES),
+])
+def test_fix_allowed_values_accepts_typos_and_casing(bad, good, allowed):
+    load(col=[bad, "other"])
+    result = json.loads(t.fix_allowed_values("col", {bad: good}, allowed))
+
+    assert result["total_cells_changed"] == 1
+    assert "refused" not in result
+    assert t.get_dataframe()["col"].tolist() == [good, "other"]
+
+
+@pytest.mark.parametrize("bad, good, allowed", [
+    ("Early Bird", "General", TICKETS),
+    ("U.S.", "USA", COUNTRIES),
+    ("Untied Kingdom", "UK", COUNTRIES),
+    ("vip", "Platinum", TICKETS),  # not an allowed value at all
+])
+def test_fix_allowed_values_refuses_guesses(bad, good, allowed):
+    load(col=[bad])
+    result = json.loads(t.fix_allowed_values("col", {bad: good}, allowed))
+
+    assert result["total_cells_changed"] == 0
+    assert bad in result["refused"]
+    assert t.get_dataframe()["col"].tolist() == [bad]
+
+
+def test_fix_allowed_values_applies_typos_and_refuses_guesses_in_one_call():
+    load(country=["usa", "U.S.", "Untied Kingdom", "UK"])
+    result = json.loads(t.fix_allowed_values(
+        "country", {"usa": "USA", "U.S.": "USA", "Untied Kingdom": "UK"}, COUNTRIES))
+
+    assert result["replacements_applied"] == {"usa": "USA"}
+    assert set(result["refused"]) == {"U.S.", "Untied Kingdom"}
+    assert t.get_dataframe()["country"].tolist() == ["USA", "U.S.", "Untied Kingdom", "UK"]
+
+
+def test_agent_passes_the_schema_allowed_values_to_the_fix():
+    from agent import dispatch_tool
+    load(ticket_type=["Early Bird", "vip"])
+    schema = schema_of(ticket_type={"dtype": "str", "allowed_values": TICKETS})
+
+    result = json.loads(dispatch_tool(
+        "fix_allowed_values",
+        {"column_name": "ticket_type", "replacements": {"Early Bird": "General", "vip": "VIP"}},
+        schema))
+
+    assert result["replacements_applied"] == {"vip": "VIP"}
+    assert t.get_dataframe()["ticket_type"].tolist() == ["Early Bird", "VIP"]
+    assert validate("ticket_type", schema)["total_violations"] == 1
+
+
 def test_fill_null_changes_only_nulls():
     load(dept=[None, "HR", None])
     result = json.loads(t.fill_null("dept", "Sales"))
