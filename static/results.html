@@ -541,7 +541,9 @@
     document.getElementById('tab-report').textContent = `Error report (${d.report.length.toLocaleString()})`;
     document.getElementById('review-note').textContent = d.removed_flagged
       ? `${d.rows_in_output.toLocaleString()} of ${d.rows_in_original.toLocaleString()} rows are in your output. The ${d.flagged_rows.toLocaleString()} flagged rows were left out and are listed in the error report.`
-      : `${d.flagged_rows.toLocaleString()} rows flagged and ${d.changed_cells.toLocaleString()} cells corrected, across all ${d.rows_in_output.toLocaleString()} rows. Row numbers match your original file.`;
+      : `${d.flagged_rows.toLocaleString()} rows flagged and ${d.changed_cells.toLocaleString()} cells corrected, across all ${d.rows_in_output.toLocaleString()} rows.`
+        + (d.reformatted_cells ? ` ${d.reformatted_cells.toLocaleString()} more cells were rewritten in a standard format with the same value, such as dates as YYYY-MM-DD.` : '')
+        + ' Row numbers match your original file.';
     document.getElementById('review-panel').classList.add('show');
     setReviewTab('data');
   }

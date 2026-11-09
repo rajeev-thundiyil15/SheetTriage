@@ -9,17 +9,41 @@ import io
 
 import pandas as pd
 
+from tools import _parse_date
+
 HEADER_ROWS = 1
 
 
-def _same_value(before: str, after: str) -> bool:
-    """True when a cell only changed format, such as 65500 becoming 65500.0."""
-    if before.strip() == after.strip():
-        return True
+def _same_number(before: str, after: str) -> bool:
     try:
         return float(before) == float(after)
     except ValueError:
         return False
+
+
+def _same_date(before: str, after: str) -> bool:
+    """True when after is before written as YYYY-MM-DD, read in any date order."""
+    try:
+        target = pd.Timestamp(after)
+    except (ValueError, TypeError):
+        return False
+    for date_format in ("MDY", "DMY", None):
+        try:
+            if _parse_date(before, date_format) == target:
+                return True
+        except (ValueError, TypeError, OverflowError):
+            continue
+    return False
+
+
+def _kind_of_change(before: str, after: str) -> str | None:
+    """None when the cell is unchanged, 'reformatted' when only its format changed
+    (02/14/2026 to 2026-02-14, 45.00 to 45.0), otherwise 'corrected'."""
+    if before.strip() == after.strip():
+        return None
+    if _same_number(before, after) or _same_date(before, after):
+        return "reformatted"
+    return "corrected"
 
 
 def build_review(original_csv: bytes, output_path: str, error_log: list[dict]) -> dict:
@@ -41,6 +65,7 @@ def build_review(original_csv: bytes, output_path: str, error_log: list[dict]) -
     rows = []
     changed_cells = 0
     changed_rows = 0
+    reformatted_cells = 0
 
     for position, values in enumerate(output[columns].itertuples(index=False, name=None)):
         source = source_rows[position] if aligned else None
@@ -52,8 +77,11 @@ def build_review(original_csv: bytes, output_path: str, error_log: list[dict]) -
                     issues[column] = issues_by_cell[(source, column)]
                 elif column in original.columns:
                     before = original.iat[source, original.columns.get_loc(column)]
-                    if not _same_value(before, value):
+                    kind = _kind_of_change(before, value)
+                    if kind == "corrected":
                         changes[column] = before
+                    elif kind == "reformatted":
+                        reformatted_cells += 1
         changed_cells += len(changes)
         changed_rows += bool(changes)
         rows.append({
@@ -84,4 +112,5 @@ def build_review(original_csv: bytes, output_path: str, error_log: list[dict]) -
         "flagged_rows": len(flagged),
         "changed_cells": changed_cells,
         "changed_rows": changed_rows,
+        "reformatted_cells": reformatted_cells,
     }

@@ -132,3 +132,35 @@ def test_review_route_errors(client, setup, expected):
         web._jobs["j"] = setup
 
     assert client.get("/review/j").status_code == expected
+
+
+@pytest.mark.parametrize("before, after, kind", [
+    ("02/14/2026", "2026-02-14", "reformatted"),
+    ("14/02/2026", "2026-02-14", "reformatted"),
+    ("March 5 2026", "2026-03-05", "reformatted"),
+    ("2026-03-15", "2026-03-15", None),
+    ("45.00", "45.0", "reformatted"),
+    ("vip", "VIP", "corrected"),
+    ("", "Sales", "corrected"),
+    ("02/14/2026", "2026-02-15", "corrected"),
+    ("Enginering", "Engineering", "corrected"),
+])
+def test_format_changes_are_told_apart_from_corrections(before, after, kind):
+    from review import _kind_of_change
+
+    assert _kind_of_change(before, after) == kind
+
+
+def test_reformatted_dates_are_counted_but_not_marked_as_corrections(tmp_path):
+    # Story 49: the progress line said 0 fixed while the review said 29 cells corrected,
+    # all of them dates written as 2024-02-14.
+    original = b"id,signed,dept\n1,02/14/2024,Enginering\n2,03/01/2024,Sales\n"
+    path = write(tmp_path, id=[1, 2], signed=["2024-02-14", "2024-03-01"], dept=["Engineering", "Sales"], _errors=["", ""])
+
+    review = build_review(original, path, [])
+
+    assert review["changed_cells"] == 1
+    assert review["changed_rows"] == 1
+    assert review["reformatted_cells"] == 2
+    assert review["rows"][0]["changes"] == {"dept": "Enginering"}
+    assert review["rows"][1]["changes"] == {}
