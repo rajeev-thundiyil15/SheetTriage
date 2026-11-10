@@ -167,6 +167,10 @@
 
     #schema-file-name { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 
+    .demo-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .demo-row .btn-secondary { width: auto; }
+    .demo-note { font-size: 12px; color: var(--text-muted); }
+
     /* ── Schema builder ── */
     .builder-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
     .builder-status.error { color: #dc2626; }
@@ -382,6 +386,11 @@
       </div>
     </div>
 
+    <div class="demo-row">
+      <button type="button" class="btn-secondary" id="demo-btn" onclick="tryDemoData()">Try demo data</button>
+      <span class="demo-note">No file handy? Use 40 event registrations with 24 planted problems.</span>
+    </div>
+
     <div class="builder-status error" id="upload-error"></div>
 
     <button id="run-btn" onclick="continueToSchema()" disabled>
@@ -566,6 +575,21 @@
       }
     };
     reader.readAsText(f);
+  }
+
+  // A file input can't be filled in by code, so the demo file is fetched and handed to the
+  // same path a chosen file takes.
+  async function tryDemoData() {
+    const error = document.getElementById('upload-error');
+    try {
+      const res = await fetch('/static/demo/event_registrations.csv');
+      if (!res.ok) throw new Error('The demo file could not be loaded. Please try again.');
+      const file = new File([await res.blob()], 'event_registrations.csv', { type: 'text/csv' });
+      setFile(file);
+      await continueToSchema();
+    } catch (e) {
+      error.textContent = e.message;
+    }
   }
 
   async function continueToSchema() {

@@ -1,0 +1,41 @@
+registration_id,attendee,email,ticket_type,price,quantity,registered_on,country,notes
+1001,Ana Martin,ana.martin@example.com,Student,20.00,1,03/21/2026,USA,
+1002,Ben Farouk,ben.farouk@example.com,General,45.00,1,02/17/2026,Canada,
+1003,Chloe Okafor,chloe.patel.example.com,General,45.00,2,03/03/2026,Canada,
+1004,Dev Brown,dev.brown@example.com,Speaker,0.00,1,2026-03-15,India,
+1005,Elena Rao,elena.rao@example.com,vip,0.00,1,02/02/2026,India,
+1006,Farid Tan,farid.tan@example.com,Student,20.00,2,02/18/2026,usa,Invoice to company
+1007,Grace Weber,grace.weber@example.com,Student,$45.00,3,02/04/2026,India,Invoice to company
+1008,Hugo Murphy,n/a,VIP,180.00,1,02/18/2026,USA,Invoice to company
+1009,Isla Patel,isla.patel@example.com,General,45.00,two,02/16/2026,India,
+1010,Jonas Ito,jonas.ito@example.com,Student,20.00,2,03/12/2026,UK,Needs wheelchair access
+1011,Kai Diaz,kai.diaz@example.com,Studnet,180.00,1,02/19/2026,UK,
+1012,Lena Rossi,lena.rossi@example.com,Speaker,0.00,1,March 5 2026,India,
+1013,Mateo Novak,mateo.novak@example.com,General,-20.00,3,03/06/2026,UK,
+1014,Nadia Cole,nadia.cole@example.com,Speaker,0.00,2,02/22/2026,U.S.,
+1015,Omar Khan,,Student,20.00,1,03/20/2026,Germany,Invoice to company
+1016,Priya Garcia,priya.garcia@example.com,Speaker,0.00,1,02/09/2026,Germany,
+1017,Quinn Singh,quinn.singh@example.com,General,45.00,0,03/10/2026,Germany,Arriving late on day one
+1018,Rosa Lee,rosa.lee@example.com,General,45.00,2,03/06/2026,India,
+1019,Sam Haddad,sam.haddad@example.com,Early Bird,0.00,1,02/25/2026,UK,
+1020,Tara Silva,tara.silva@example.com,VIP,180.00,2,13/02/2026,Germany,
+1021,,ana.martin@example.com,VIP,180.00,2,03/18/2026,UK,
+1022,Ben Farouk,ben.farouk@example.com,Speaker,free,3,03/23/2026,Germany,Arriving late on day one
+1023,Chloe Okafor,chloe.okafor@example.com,Speaker,0.00,1,02/03/2026,Canada,
+1024,Dev Brown,dev.brown@example.com,general,180.00,1,02/16/2026,India,
+1025,Elena Rao,elena.rao@example.com,Student,20.00,1,02/05/2026,Germany,
+1026,Farid Tan,farid.tan@example.com,Student,20.00,12,03/05/2026,India,Invoice to company
+1027,Grace Weber,grace.weber@example.com,General,45.00,2,03/13/2026,Untied Kingdom,
+1028,Hugo Murphy,hugo.murphy@example.com,General,45.00,2,,Canada,
+1029,Isla Patel,isla.patel@example.com,VIP,180.00,2,02/04/2026,UK,Invoice to company
+1030,Jonas Ito,jonas.ito@example.com,General,750.00,1,02/19/2026,Canada,
+1031,Kai Diaz,kai.diaz@example.com,General,45.00,1,02/03/2026,Canada,Invoice to company
+1032,Lena Rossi,lena.rossi@example.com,Speaker,0.00,1,03/12/2026,India,Arriving late on day one
+1033,Mateo Novak,mateo.novak@example.com,Speaker,0.00,2.5,02/28/2026,Germany,Bringing a colleague
+1034,Nadia Cole,nadia.cole@example.com,Speaker,0.00,2,03/03/2026,Canada,
+1035,Omar Khan,omar.khan@example.com,Student,20.00,1,03/27/2026,Canada,
+1036,Priya Garcia,priya.garcia@example.com,General,45.00,1,02/30/2026,India,
+1037,Quinn Singh,quinn.singh@example.com,Student,20.00,1,03/17/2026,UK,
+1038,Rosa Lee,rosa.lee@example.com,Student,20.00,1,03/21/2026,Canada,Invoice to company
+1039,Sam Haddad,sam.haddad@example.com,VIP,180.00,1,03/24/2026,Canada,Needs wheelchair access
+1040,Tara Silva,tara.silva@example.com,Speaker,0.00,1,02/01/2026,UK,Bringing a colleague
