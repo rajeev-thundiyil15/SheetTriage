@@ -22,7 +22,7 @@ STEP_SECONDS = 0.1
 # A column with one of these names in a test file changes how the scripted run behaves.
 FAIL_COLUMN = "simulate_api_overloaded"  # the run stops the way an overloaded Claude API stops it
 SLOW_COLUMN = "simulate_slow_run"  # each step takes SLOW_STEP_SECONDS, so a second run can be tried
-SLOW_STEP_SECONDS = 1.0
+SLOW_STEP_SECONDS = 2.5  # 3 columns: about 8 s, long enough for a second tab to upload and press Run
 
 
 class OverloadedError(Exception):

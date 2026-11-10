@@ -1,0 +1,4 @@
+id,email,<img src=x onerror="window.__injected='header'">
+1,ana@example.com,fine
+2,"<img src=x onerror=""window.__injected='cell'"">",fine
+3,<script>window.__injected='script'</script>,fine

@@ -29,6 +29,8 @@ jobs:
           cache: npm
           cache-dependency-path: e2e/package-lock.json
       - run: npm ci
+      - name: Type-check the tests
+        run: npm run typecheck
       - run: npx playwright install --with-deps chromium
       - name: Run the browser tests
         run: npx playwright test
@@ -41,3 +43,29 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 14
+      - name: Prepare the report for GitHub Pages
+        if: ${{ !cancelled() && github.ref == 'refs/heads/master' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: e2e/playwright-report
+
+  report:
+    name: Publish the test report
+    needs: e2e
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.e2e.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    # Publishing needs Pages turned on (Settings > Pages > Source: GitHub Actions); until
+    # then this job fails without failing the tests.
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

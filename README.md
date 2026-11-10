@@ -69,15 +69,18 @@ One job runs at a time, uploads are capped at 5 MB and 30,000 rows, and jobs liv
 ## Testing
 
 - **182 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages. None call the API.
-- **7 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time:
+- **10 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema and results pages:
   - upload to review;
   - refreshing the results page;
   - the demo button from start to finish;
+  - script code in a CSV shown as text and never run;
+  - both downloads holding the right rows;
+  - no sideways scrolling at phone width;
   - a file with a malformed row being refused;
   - a semicolon CSV from Excel;
   - a run that fails partway;
   - a second run while one is going.
-- **GitHub Actions** runs both suites on every push and keeps the Playwright report and traces.
+- **GitHub Actions** runs both suites and a TypeScript check on every push, keeps the Playwright report and traces, and publishes the latest report from master to [GitHub Pages](https://rajeev-thundiyil15.github.io/SheetTriage/).
 - **Live accuracy runs** on the deployed site, using generated files with known planted problems:
 
 | File | Mode | Agent steps | Time | Rows flagged | Expected |
@@ -150,7 +153,7 @@ uv run --no-project --with-requirements requirements.txt python main.py data/tes
 ├── schema/              # Example schemas (registrations matches the test data)
 ├── data/                # 40-row test file and its answer key
 ├── tests/               # pytest suite
-├── e2e/                 # Playwright tests, fixtures and the scripted agent server
+├── e2e/                 # Playwright tests, page objects, fixtures and the scripted agent server
 └── docs/screenshots/
 ```
 
