@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SheetTriage — App</title>
+  <link rel="stylesheet" href="/static/account.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -170,6 +171,15 @@
     .demo-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
     .demo-row .btn-secondary { width: auto; }
     .demo-note { font-size: 12px; color: var(--text-muted); }
+    .keep-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: -12px; }
+    .keep-note:empty { display: none; }
+    .sign-in-gate p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; }
+    .sign-in-gate strong { color: var(--text); }
+    .gate-btn {
+      display: inline-block; padding: 8px 16px; border-radius: var(--radius);
+      background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none;
+    }
+    .gate-btn:hover { background: var(--accent-hover); }
 
     /* ── Schema builder ── */
     .builder-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
@@ -345,7 +355,10 @@
 
 <nav class="topnav">
   <span class="nav-logo">SheetTriage</span>
-  <a href="/" class="nav-back">&larr; Home</a>
+  <div class="nav-right">
+    <a href="/" class="nav-back">&larr; Home</a>
+    <span id="account-nav"></span>
+  </div>
 </nav>
 
 <div class="tabs">
@@ -366,7 +379,12 @@
   <div class="card">
 
     <!-- Upload -->
-    <div>
+    <div id="sign-in-gate" class="sign-in-gate" style="display:none">
+      <div class="field-label">1 — Upload CSV</div>
+      <p><strong>Sign in to clean your own file.</strong> Your account keeps results for 7 days and shows them on any device. The demo data below works without an account.</p>
+      <a id="gate-sign-in" href="/sign-in?next=/app" class="gate-btn">Sign in</a>
+    </div>
+    <div id="own-file">
       <div class="field-label">1 — Upload CSV</div>
       <div class="upload-zone" id="drop-zone">
         <input type="file" id="csv-file" accept=".csv">
@@ -390,6 +408,8 @@
       <button type="button" class="btn-secondary" id="demo-btn" onclick="tryDemoData()">Try demo data</button>
       <span class="demo-note">No file handy? Use 40 event registrations with 24 planted problems.</span>
     </div>
+
+    <p class="keep-note" id="keep-note"></p>
 
     <div class="builder-status error" id="upload-error"></div>
 
@@ -514,6 +534,7 @@
 </div><!-- end #page-guide -->
 
 
+<script src="/static/account.js"></script>
 <script>
   function switchTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
@@ -580,20 +601,38 @@
     reader.readAsText(f);
   }
 
-  // A file input can't be filled in by code, so the demo file is fetched and handed to the
-  // same path a chosen file takes.
+  // The server uploads its own copy of the demo file, so the demo works without signing in.
   async function tryDemoData() {
     const error = document.getElementById('upload-error');
+    const button = document.getElementById('demo-btn');
+    button.disabled = true;
+    error.textContent = '';
     try {
-      const res = await fetch('/static/demo/event_registrations.csv');
+      const res = await fetch('/upload-demo', { method: 'POST' });
       if (!res.ok) throw new Error('The demo file could not be loaded. Please try again.');
-      const file = new File([await res.blob()], 'event_registrations.csv', { type: 'text/csv' });
-      setFile(file);
-      await continueToSchema();
+      window.location.href = `/schema?upload=${(await res.json()).upload_id}`;
     } catch (e) {
       error.textContent = e.message;
+      button.disabled = false;
     }
   }
+
+  // How long results are kept, and whether this browser has to sign in to upload its own file.
+  window.accountReady.then(me => {
+    if (!me) return;
+    const note = document.getElementById('keep-note');
+    if (me.accounts && !me.signed_in) {
+      document.getElementById('own-file').style.display = 'none';
+      document.getElementById('run-btn').style.display = 'none';
+      document.getElementById('sign-in-gate').style.display = 'block';
+      note.textContent = `Demo results are kept for ${keptFor(me.demo_keep_hours)}.`;
+    } else if (me.accounts) {
+      const left = Math.max(0, me.run_limit - me.runs_this_month);
+      note.textContent = `Results are saved to My files for ${keptFor(me.keep_hours)}. ${left} of ${me.run_limit} runs left this month.`;
+    } else {
+      note.textContent = `Results are kept for ${keptFor(me.keep_hours)}, and only this browser can open them.`;
+    }
+  });
 
   async function continueToSchema() {
     const btn = document.getElementById('run-btn');

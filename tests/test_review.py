@@ -1,10 +1,16 @@
 """Tests for lining up the output with the original file, and the review route. No API calls."""
+import threading
+import time
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 import app as web
+import auth
+import tools
 from review import build_review
+from storage import UNFINISHED, Store
 
 ORIGINAL = b"id,dept,pay\n1,Enginering,100\n2,Sales,abc\n3,HR,300\n"
 
@@ -101,37 +107,65 @@ def test_report_is_sorted_by_row(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def client():
-    web._jobs.clear()
+def client(monkeypatch, tmp_path):
+    monkeypatch.setattr(web, "store", Store(tmp_path / "store"))
+    monkeypatch.setattr(web, "_active_job", None)
+    monkeypatch.setattr(auth, "AUTH_MODE", "off")
     return TestClient(web.app)
 
 
-def job(path, done=True):
-    return {"output_path": path, "done": done, "created_at": 0, "contents": ORIGINAL, "issues": [log(1, "pay", "bad pay")]}
+def run_job(client, monkeypatch, write_output=True, finish=True):
+    """Runs a job whose scripted agent saves this output and logs one flagged cell."""
+    release = threading.Event()
+
+    def scripted_agent(df, schema, output_path, mode, on_log):
+        tools.set_dataframe(df)
+        tools._state["error_log"].append(log(1, "pay", "bad pay"))
+        if write_output:
+            pd.DataFrame({"id": [1, 2, 3], "dept": ["Engineering", "Sales", "HR"], "pay": ["100", "abc", "300"],
+                          "_errors": ["", "bad pay", ""]}).to_csv(output_path, index=False)
+        if not finish:
+            release.wait(5)
+    monkeypatch.setattr(web, "run_agent", scripted_agent)
+
+    upload_id = client.post("/upload", files={"csv_file": ("pay.csv", ORIGINAL, "text/csv")}).json()["upload_id"]
+    schema = '{"name": "t", "columns": {"pay": {"dtype": "int"}}}'
+    job_id = client.post("/clean", data={"upload_id": upload_id, "schema_json": schema}).json()["job_id"]
+    if finish:
+        for _ in range(200):
+            if web.store.get_job(job_id, None)["status"] not in UNFINISHED:
+                break
+            time.sleep(0.01)
+    return job_id, release
 
 
-def test_review_route_returns_the_review_and_caches_it(client, tmp_path):
-    path = write(tmp_path, id=[1, 2, 3], dept=["Engineering", "Sales", "HR"], pay=["100", "abc", "300"], _errors=["", "bad pay", ""])
-    web._jobs["j"] = job(path)
+def test_review_route_returns_the_review_built_once(client, monkeypatch):
+    job_id, _ = run_job(client, monkeypatch)
 
-    first = client.get("/review/j")
+    first = client.get(f"/review/{job_id}")
 
     assert first.status_code == 200
     assert first.json()["flagged_rows"] == 1
-    assert web._jobs["j"]["contents"] is None
-    assert client.get("/review/j").json() == first.json()
+    assert (web.store.job_dir(job_id) / "review.json").exists()
+    assert web.store.get_job(job_id, None)["flagged_rows"] == 1
+    assert client.get(f"/review/{job_id}").json() == first.json()
 
 
-@pytest.mark.parametrize("setup, expected", [
-    (None, 404),
-    ({"output_path": "missing.csv", "done": False, "created_at": 0}, 409),
-    ({"output_path": "missing.csv", "done": True, "created_at": 0}, 404),
-])
-def test_review_route_errors(client, setup, expected):
-    if setup:
-        web._jobs["j"] = setup
+def test_review_route_for_an_unknown_job(client):
+    assert client.get("/review/nope").status_code == 404
 
-    assert client.get("/review/j").status_code == expected
+
+def test_review_route_while_running(client, monkeypatch):
+    job_id, release = run_job(client, monkeypatch, finish=False)
+
+    assert client.get(f"/review/{job_id}").status_code == 409
+    release.set()
+
+
+def test_review_route_when_nothing_was_saved(client, monkeypatch):
+    job_id, _ = run_job(client, monkeypatch, write_output=False)
+
+    assert client.get(f"/review/{job_id}").status_code == 404
 
 
 @pytest.mark.parametrize("before, after, kind", [

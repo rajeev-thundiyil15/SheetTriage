@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SheetTriage — Schema</title>
+  <link rel="stylesheet" href="/static/account.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -340,7 +341,10 @@
 
 <nav class="topnav">
   <span class="nav-logo">SheetTriage</span>
-  <a href="/app" class="nav-back">&larr; Choose another file</a>
+  <div class="nav-right">
+    <a href="/app" class="nav-back">&larr; Choose another file</a>
+    <span id="account-nav"></span>
+  </div>
 </nav>
 
 <div id="page-agent" class="page active">
@@ -743,5 +747,6 @@
   loadUpload();
 </script>
 
+<script src="/static/account.js"></script>
 </body>
 </html>

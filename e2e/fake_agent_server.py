@@ -4,19 +4,28 @@ Only the Claude loop is replaced. Uploads, schema building, validation, saving a
 review all run the real code. Started by playwright.config.ts; never used in production.
 """
 import json
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
 
 import uvicorn
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+PORT = int(os.getenv("PORT", "8010"))
+
+# Each test server saves to its own folder, emptied at start so every test run begins clean.
+DATA_DIR = ROOT / "e2e" / f".data-{PORT}"
+shutil.rmtree(DATA_DIR, ignore_errors=True)
+os.environ["DATA_DIR"] = str(DATA_DIR)
 
 import app as web  # noqa: E402
 import tools  # noqa: E402
 from agent import derive_report_path  # noqa: E402
 
-PORT = 8010
 STEP_SECONDS = 0.1
 
 # A column with one of these names in a test file changes how the scripted run behaves.

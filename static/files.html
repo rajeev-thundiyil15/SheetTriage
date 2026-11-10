@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — My files</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/account.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --text:       #09090b;
+      --text-muted: #71717a;
+      --border:     #e4e4e7;
+      --bg:         #fafafa;
+      --surface:    #ffffff;
+      --accent:     #18181b;
+      --accent-hover: #3f3f46;
+      --green:      #16a34a;
+      --radius:     8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased;
+    }
+
+    nav.topnav {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 0 32px; height: 52px;
+      background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--text); text-decoration: none; }
+    .nav-back { font-size: 13px; color: var(--text-muted); text-decoration: none; font-weight: 500; }
+    .nav-back:hover { color: var(--text); }
+
+    main { flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 32px 32px 64px; }
+
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    h1 { font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+    .page-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer;
+      padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--accent);
+      background: var(--accent); color: #fff; white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn.secondary { background: var(--surface); color: var(--text); border-color: var(--border); font-weight: 500; }
+    .btn.secondary:hover { border-color: #a1a1aa; background: var(--bg); }
+    .btn.danger { background: var(--surface); color: #b91c1c; border-color: var(--border); font-weight: 500; }
+    .btn.danger:hover { border-color: #fca5a5; background: #fef2f2; }
+    .btn.small { padding: 5px 10px; font-size: 12px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+    .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+    .stat-value { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .stat-note { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .meter { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .meter span { display: block; height: 100%; background: var(--accent); }
+
+    .notice {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .notice p { font-size: 13px; color: var(--text-muted); line-height: 1.5; flex: 1 1 260px; }
+    .notice strong { color: var(--text); }
+
+    .job-list { display: flex; flex-direction: column; gap: 8px; }
+    .job {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    .job-main { flex: 1 1 260px; min-width: 0; }
+    .job-name {
+      font-size: 14px; font-weight: 600; color: var(--text); text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+    a.job-name:hover { text-decoration: underline; }
+    .job-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+    .job-side { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .chip {
+      font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+      background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+    }
+    .chip.clean { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .chip.flagged { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .chip.stopped { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .chip.running { background: #fefce8; color: #854d0e; border-color: #fde047; }
+
+    .empty {
+      background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 40px 24px; text-align: center;
+    }
+    .empty p { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+
+    .loading { font-size: 13px; color: var(--text-muted); padding: 24px 0; }
+
+    @media (max-width: 640px) {
+      nav.topnav { padding: 0 16px; }
+      main { padding: 20px 16px 48px; }
+      .stats { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="/" class="nav-logo">SheetTriage</a>
+  <div class="nav-right">
+    <a href="/app" class="nav-back">Clean a file</a>
+    <span id="account-nav"></span>
+  </div>
+</nav>
+
+<main>
+  <div class="page-head">
+    <div>
+      <h1>My files</h1>
+      <p class="page-sub" id="page-sub"></p>
+    </div>
+    <a href="/app" class="btn">Clean a file</a>
+  </div>
+
+  <div id="sign-in-notice" class="notice" style="display:none">
+    <p><strong>Sign in to keep your results.</strong> Your account keeps cleaned files for 7 days and shows them on any device. Runs from this browser move to your account when you sign in.</p>
+    <a id="sign-in-link" href="/sign-in?next=/files" class="btn">Sign in</a>
+  </div>
+
+  <div class="stats" id="stats" style="display:none">
+    <div class="stat">
+      <div class="stat-label">Runs this month</div>
+      <div class="stat-value" id="stat-runs"></div>
+      <div class="meter"><span id="stat-meter"></span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Plan</div>
+      <div class="stat-value" id="stat-plan"></div>
+      <div class="stat-note" id="stat-plan-note"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Rows flagged</div>
+      <div class="stat-value" id="stat-flagged"></div>
+      <div class="stat-note">across saved runs</div>
+    </div>
+  </div>
+
+  <div id="jobs" class="job-list"><div class="loading">Loading your files...</div></div>
+</main>
+
+<script src="/static/account.js"></script>
+<script>
+  const MODE_LABEL = { audit: 'Audit only', clean: 'Clean + report', strict: 'Strict clean' };
+
+  function el(tag, props = {}, text) {
+    const node = document.createElement(tag);
+    Object.assign(node, props);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function when(seconds) {
+    return new Date(seconds * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function keptUntil(seconds) {
+    const hoursLeft = (seconds * 1000 - Date.now()) / 3600000;
+    if (hoursLeft < 1) return `Deleted in ${Math.max(1, Math.round(hoursLeft * 60))} min`;
+    if (hoursLeft < 24) return `Deleted in ${Math.round(hoursLeft)} h`;
+    return `Kept until ${new Date(seconds * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  }
+
+  function resultChip(job) {
+    if (job.status === 'running' || job.status === 'queued') return el('span', { className: 'chip running' }, 'Running');
+    if (job.status === 'error') return el('span', { className: 'chip stopped' }, 'Stopped');
+    if (job.status === 'interrupted') return el('span', { className: 'chip stopped' }, 'Cut short');
+    if (job.flagged_rows === null) return el('span', { className: 'chip' }, 'Finished');
+    if (job.flagged_rows === 0) return el('span', { className: 'chip clean' }, 'All clean');
+    const n = job.flagged_rows;
+    return el('span', { className: 'chip flagged' }, `${n.toLocaleString()} ${n === 1 ? 'row' : 'rows'} flagged`);
+  }
+
+  async function deleteJob(job, card) {
+    if (!confirm(`Delete the results for ${job.filename}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/jobs/${encodeURIComponent(job.job_id)}`, { method: 'DELETE' });
+    if (!res.ok) { alert((await res.json()).detail || 'The run could not be deleted.'); return; }
+    card.remove();
+    if (!document.querySelector('.job')) renderJobs([]);
+  }
+
+  function jobCard(job) {
+    const card = el('div', { className: 'job' });
+    card.dataset.jobId = job.job_id;
+    const href = `/results?job=${encodeURIComponent(job.job_id)}`;
+
+    const main = el('div', { className: 'job-main' });
+    // File names come from the uploaded file, so they only ever go in as text.
+    main.append(el('a', { className: 'job-name', href }, job.filename));
+    const meta = [`${job.rows.toLocaleString()} rows`, MODE_LABEL[job.mode] || job.mode, when(job.created_at)];
+    if (job.demo) meta.unshift('Demo');
+    main.append(el('div', { className: 'job-meta' }, `${meta.join(' · ')} · ${keptUntil(job.expires_at)}`));
+
+    const side = el('div', { className: 'job-side' });
+    side.append(resultChip(job), el('a', { className: 'btn secondary small', href }, 'Open'));
+    if (job.status !== 'running' && job.status !== 'queued') {
+      side.append(el('button', { className: 'btn danger small', type: 'button', onclick: () => deleteJob(job, card) }, 'Delete'));
+    }
+    card.append(main, side);
+    return card;
+  }
+
+  function renderJobs(jobs) {
+    const list = document.getElementById('jobs');
+    if (!jobs.length) {
+      const empty = el('div', { className: 'empty', id: 'jobs-empty' });
+      empty.append(el('p', {}, 'No files yet. Results from your runs show up here.'));
+      empty.append(el('a', { className: 'btn', href: '/app' }, 'Clean a file'));
+      list.replaceChildren(empty);
+      return;
+    }
+    list.replaceChildren(...jobs.map(jobCard));
+    const flagged = jobs.reduce((sum, job) => sum + (job.flagged_rows || 0), 0);
+    document.getElementById('stat-flagged').textContent = flagged.toLocaleString();
+  }
+
+  async function load() {
+    const me = await window.accountReady;
+    const sub = document.getElementById('page-sub');
+
+    if (me && me.accounts && me.signed_in) {
+      sub.textContent = `Your saved runs. Results are kept for ${keptFor(me.keep_hours)}, and only you can open them.`;
+      document.getElementById('stats').style.display = 'grid';
+      document.getElementById('stat-runs').textContent = `${me.runs_this_month} of ${me.run_limit}`;
+      document.getElementById('stat-meter').style.width = `${Math.min(100, 100 * me.runs_this_month / Math.max(1, me.run_limit))}%`;
+      document.getElementById('stat-plan').textContent = me.plan === 'paid' ? 'Paid' : 'Free';
+      document.getElementById('stat-plan-note').textContent = `results kept ${keptFor(me.keep_hours)}`;
+      document.getElementById('stat-flagged').textContent = '0';
+    } else if (me && me.accounts) {
+      sub.textContent = `Runs from this browser. They're kept for ${keptFor(me.demo_keep_hours)}.`;
+      document.getElementById('sign-in-notice').style.display = 'flex';
+    } else {
+      sub.textContent = `Runs from this browser. They're kept for ${keptFor(me ? me.keep_hours : 1)}, and only this browser can open them.`;
+    }
+
+    try {
+      const res = await fetch('/api/jobs');
+      if (!res.ok) throw new Error();
+      renderJobs(await res.json());
+    } catch (e) {
+      document.getElementById('jobs').replaceChildren(el('div', { className: 'empty' }, 'Your files could not be loaded. Please refresh the page.'));
+    }
+  }
+
+  load();
+</script>
+
+</body>
+</html>

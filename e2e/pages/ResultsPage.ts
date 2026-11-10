@@ -16,8 +16,16 @@ export class ResultsPage {
   readonly correctedCells: Locator;
   readonly downloadCsv: Locator;
   readonly downloadReport: Locator;
+  readonly title: Locator;
+  readonly keepNote: Locator;
+  readonly copyLink: Locator;
+  readonly deleteButton: Locator;
 
   constructor(readonly page: Page) {
+    this.title = page.locator('#results-title');
+    this.keepNote = page.locator('#job-note');
+    this.copyLink = page.getByRole('button', { name: 'Copy link' });
+    this.deleteButton = page.locator('#delete-job-btn');
     this.status = page.locator('#status-badge');
     this.headline = page.locator('#summary-headline');
     this.log = page.locator('#log-body');

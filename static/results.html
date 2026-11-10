@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SheetTriage — Results</title>
+  <link rel="stylesheet" href="/static/account.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -55,8 +56,20 @@
 
     .results-wrap { max-width: 1040px; min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 12px; }
 
-    .results-header { display: flex; align-items: baseline; justify-content: space-between; }
-    .results-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+    .results-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .results-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; min-width: 0; }
+    .job-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: -6px; }
+    .job-note:empty { display: none; }
+    .job-actions { display: none; gap: 8px; }
+    .job-actions.show { display: flex; }
+    .job-action {
+      font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+      padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+    }
+    .job-action:hover { border-color: #a1a1aa; background: var(--bg); }
+    .job-action.danger { color: #b91c1c; }
+    .job-action.danger:hover { border-color: #fca5a5; background: #fef2f2; }
 
     .log-panel {
       background: var(--terminal-bg); border: 1px solid #27272a;
@@ -273,7 +286,10 @@
 
 <nav class="topnav">
   <span class="nav-logo">SheetTriage</span>
-  <a href="/app" class="nav-back">&larr; Back to app</a>
+  <div class="nav-right">
+    <a href="/app" class="nav-back">&larr; Back to app</a>
+    <span id="account-nav"></span>
+  </div>
 </nav>
 
 <main>
@@ -293,8 +309,13 @@
 
     <div id="job-view" style="display:none; flex-direction:column; gap:12px;">
       <div class="results-header">
-        <span class="results-title">Agent Run</span>
+        <span class="results-title" id="results-title">Agent Run</span>
+        <span class="job-actions" id="job-actions">
+          <button type="button" class="job-action" id="copy-link-btn" onclick="copyLink()" style="display:none">Copy link</button>
+          <button type="button" class="job-action danger" id="delete-job-btn" onclick="deleteThisJob()">Delete</button>
+        </span>
       </div>
+      <p class="job-note" id="job-note"></p>
 
       <div class="progress-panel" id="progress-panel">
         <div class="progress-stats" id="progress-stats"></div>
@@ -351,12 +372,16 @@
         </div>
       </div>
 
-      <a href="/app" class="new-job-btn">&larr; Run another file</a>
+      <span style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="/app" class="new-job-btn">&larr; Run another file</a>
+        <a href="/files" class="new-job-btn">My files</a>
+      </span>
     </div>
 
   </div>
 </main>
 
+<script src="/static/account.js"></script>
 <script>
   const params = new URLSearchParams(window.location.search);
   const jobId = params.get('job');
@@ -372,6 +397,7 @@
     document.getElementById('job-view').style.display = 'flex';
     logBody.innerHTML = '';
     connect(jobId);
+    loadJobInfo();
   }
 
   function appendLog(msg) {
@@ -413,6 +439,7 @@
         return;
       case 'done':
         setStatus('done');
+        showJobActions();
         if (msg.download_url) {
           downloadBtn.href = msg.download_url;
           downloadBtn.setAttribute('download', 'output.csv');
@@ -430,6 +457,7 @@
         el.className = 'log-error-msg';
         el.textContent = 'error: ' + msg.message;
         setStatus('error');
+        showJobActions();
         break;
       default:
         el.textContent = JSON.stringify(msg);
@@ -688,6 +716,55 @@
     statusBadge.textContent = { running: 'running', done: 'done', error: 'error' }[state] || state;
   }
 
+  // ── Saving, sharing and deleting this run ──
+  function showJobActions() {
+    document.getElementById('job-actions').classList.add('show');
+  }
+
+  function keptUntilText(seconds) {
+    const date = new Date(seconds * 1000);
+    const hoursLeft = (date - Date.now()) / 3600000;
+    return hoursLeft < 24
+      ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+      : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  async function loadJobInfo() {
+    const [me, res] = await Promise.all([
+      window.accountReady,
+      fetch(`/api/jobs/${encodeURIComponent(jobId)}`).catch(() => null),
+    ]);
+    if (!res || !res.ok) return;
+    const job = await res.json();
+    // The file name comes from the upload, so it only ever goes in as text.
+    document.getElementById('results-title').textContent = job.filename;
+    document.title = `SheetTriage — ${job.filename}`;
+    const until = keptUntilText(job.expires_at);
+    const signedIn = me && me.accounts && me.signed_in;
+    document.getElementById('job-note').textContent = signedIn
+      ? `Saved to My files until ${until}. Only you can open this link, when you're signed in.`
+      : `Kept until ${until}, and only this browser can open it.`;
+    document.getElementById('copy-link-btn').style.display = signedIn ? '' : 'none';
+  }
+
+  async function copyLink() {
+    const button = document.getElementById('copy-link-btn');
+    try {
+      await navigator.clipboard.writeText(location.href);
+      button.textContent = 'Link copied';
+    } catch (e) {
+      button.textContent = 'Copy failed';
+    }
+    setTimeout(() => { button.textContent = 'Copy link'; }, 2000);
+  }
+
+  async function deleteThisJob() {
+    if (!confirm('Delete these results? The cleaned file and the error report are removed, and this cannot be undone.')) return;
+    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+    if (res.ok) window.location.href = '/files';
+    else alert((await res.json().catch(() => ({}))).detail || 'These results could not be deleted.');
+  }
+
   function connect(id) {
     setStatus('running');
     const es = new EventSource(`/stream/${id}`);
@@ -702,7 +779,7 @@
       appendLog({
         type: 'error',
         message: res && res.status === 404
-          ? 'This run is no longer available. Runs are kept for about an hour, and a server restart clears them. Please upload your file again.'
+          ? 'This run is no longer available. It may have expired or been deleted, or it was made in another browser or account. Please upload your file again.'
           : 'Connection to server lost. Refresh this page to reconnect.',
       });
     };

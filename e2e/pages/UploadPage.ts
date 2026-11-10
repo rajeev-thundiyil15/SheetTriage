@@ -8,8 +8,12 @@ export class UploadPage {
   readonly demoButton: Locator;
   readonly error: Locator;
   readonly sizeNote: Locator;
+  readonly keepNote: Locator;
+  readonly signInPrompt: Locator;
 
   constructor(readonly page: Page) {
+    this.keepNote = page.locator('#keep-note');
+    this.signInPrompt = page.locator('#sign-in-gate');
     this.fileInput = page.locator('#csv-file');
     this.continueButton = page.getByRole('button', { name: 'Continue to Schema' });
     this.demoButton = page.getByRole('button', { name: 'Try demo data' });

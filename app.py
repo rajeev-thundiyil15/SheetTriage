@@ -2,9 +2,7 @@
 app.py — FastAPI web server.
 
 Run with:
-    uv run --with fastapi --with uvicorn --with python-multipart --with aiofiles \
-           --with anthropic --with pandas --with pydantic --with python-dotenv \
-           uvicorn app:app --reload
+    uv run --no-project --with-requirements requirements.txt uvicorn app:app --reload
 """
 import asyncio
 import io
@@ -12,48 +10,104 @@ import json
 import os
 import threading
 import time
-import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-
-import tools
-from agent import run_agent, derive_report_path
-from csv_input import normalize_csv
-from review import build_review
-from schema import DataSchema
-from schema_infer import infer_schema
 
 load_dotenv()
 
-app = FastAPI(title="Data Cleaning Agent")
+import auth  # noqa: E402  (reads AUTH_MODE, so .env has to be loaded first)
+import tools  # noqa: E402
+from agent import run_agent, derive_report_path  # noqa: E402
+from csv_input import normalize_csv  # noqa: E402
+from review import build_review  # noqa: E402
+from schema import DataSchema  # noqa: E402
+from schema_infer import infer_schema  # noqa: E402
+from storage import UNFINISHED, Store  # noqa: E402
 
-Path("data").mkdir(exist_ok=True)
+app = FastAPI(title="SheetTriage")
+
 Path("static").mkdir(exist_ok=True)
 
-# Upload limits — keep runs bounded on a free-tier instance (cost + memory).
-# Override via env vars if you move to a bigger plan.
+# Upload limits keep runs bounded in cost and memory. Override via env vars on a bigger plan.
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "5"))
 MAX_UPLOAD_ROWS = int(os.getenv("MAX_UPLOAD_ROWS", "30000"))
 
-# How long a finished job's output files stick around before being swept.
+# How long results are kept: runs made without signing in (and the demo) are kept briefly,
+# account runs for longer.
 JOB_FILE_TTL_SECONDS = int(os.getenv("JOB_FILE_TTL_SECONDS", str(60 * 60)))
+KEEP_DAYS = {"free": 7, "paid": 30}
 
-# Uploads wait in memory between the upload page and the run, so keep only a few.
+# Runs a month, per plan. The demo file doesn't count.
+RUNS_PER_MONTH = {
+    "free": int(os.getenv("FREE_RUNS_PER_MONTH", "5")),
+    "paid": int(os.getenv("PAID_RUNS_PER_MONTH", "100")),
+}
+
+# Uploads kept per owner, and in total for browsers that haven't signed in, so the disk
+# can't be filled by one visitor.
 MAX_STORED_UPLOADS = int(os.getenv("MAX_STORED_UPLOADS", "20"))
+MAX_ANONYMOUS_UPLOADS = int(os.getenv("MAX_ANONYMOUS_UPLOADS", "200"))
 
-# upload_id → {contents, filename, rows, columns, created_at}
-_uploads: dict[str, dict] = {}
+DEMO_FILE = Path("static/demo/event_registrations.csv")
 
-# job_id → {events, output_path, done, error, created_at}
-_jobs: dict[str, dict] = {}
+store = Store()
+
+# Tool state is shared by the whole process (tools._state), so only one run at a time.
 _job_lock = threading.Lock()
 _active_job: str | None = None
 
+NOT_FOUND_UPLOAD = "That upload has expired. Please upload your CSV again."
+NOT_FOUND_JOB = "Job not found"
+
+
+# ── Who is asking ──
+
+@app.middleware("http")
+async def session_cookie(request: Request, call_next):
+    new_session = auth.ensure_session(request)
+    response = await call_next(request)
+    if new_session:
+        auth.set_session_cookie(request, response, new_session)
+    return response
+
+
+def _user(request: Request) -> dict | None:
+    user_id = auth.signed_in_user_id(request)
+    return store.get_user(user_id) if user_id else None
+
+
+def _owner(request: Request) -> str:
+    user = _user(request)
+    return user["id"] if user else "session:" + auth.session_id(request)
+
+
+def _keep_seconds(user: dict | None, demo: bool) -> float:
+    if demo or not user:
+        return JOB_FILE_TTL_SECONDS
+    return KEEP_DAYS.get(user["plan"], KEEP_DAYS["free"]) * 24 * 60 * 60
+
+
+def _month_start() -> float:
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+
+def _usage(user: dict | None) -> dict:
+    if not user:
+        return {"runs_this_month": None, "run_limit": None}
+    return {
+        "runs_this_month": store.runs_since(user["id"], _month_start()),
+        "run_limit": RUNS_PER_MONTH.get(user["plan"], RUNS_PER_MONTH["free"]),
+    }
+
+
+# ── Helpers ──
 
 def _read_csv(contents: bytes, **kwargs) -> pd.DataFrame:
     """Only empty cells count as blank, so text like 'n/a' reaches the report as written."""
@@ -85,27 +139,77 @@ def _run_error_message(exc: Exception) -> str:
     return f"The run stopped because of an unexpected error: {exc}"
 
 
-def _cleanup_old_jobs() -> None:
-    """Delete finished jobs' output files once they're older than the TTL, and
-    drop their entries so _jobs doesn't grow unbounded over the process lifetime."""
-    now = time.time()
-    for uid in [u for u, upload in _uploads.items() if now - upload["created_at"] > JOB_FILE_TTL_SECONDS]:
-        _uploads.pop(uid, None)
-    with _job_lock:
-        stale_ids = [
-            jid for jid, job in _jobs.items()
-            if job.get("done") and now - job.get("created_at", now) > JOB_FILE_TTL_SECONDS
-        ]
-    for jid in stale_ids:
-        job = _jobs.pop(jid, None)
-        if not job:
-            continue
-        for path in (job["output_path"], derive_report_path(job["output_path"])):
-            try:
-                Path(path).unlink(missing_ok=True)
-            except OSError:
-                pass
+def _make_room_for_upload(owner: str) -> None:
+    """Drops the oldest uploads past the per-owner cap, and past the cap for all signed-out browsers."""
+    mine = store.uploads_of(owner)
+    for upload in mine[: max(0, len(mine) - MAX_STORED_UPLOADS + 1)]:
+        store.delete_upload(upload["id"])
+    if owner.startswith("session:"):
+        anonymous = store.count_uploads("session:")
+        for upload in anonymous[: max(0, len(anonymous) - MAX_ANONYMOUS_UPLOADS + 1)]:
+            store.delete_upload(upload["id"])
 
+
+def _get_upload(request: Request, upload_id: str) -> dict:
+    upload = store.get_upload(upload_id, _owner(request))
+    if not upload:
+        raise HTTPException(404, NOT_FOUND_UPLOAD)
+    return upload
+
+
+def _get_job(request: Request, job_id: str) -> dict:
+    job = store.get_job(job_id, _owner(request))
+    if not job:
+        raise HTTPException(404, NOT_FOUND_JOB)
+    return job
+
+
+def _upload_summary(upload: dict) -> dict:
+    return {
+        "upload_id": upload["id"],
+        "filename": upload["filename"],
+        "rows": upload["rows"],
+        "columns": upload["columns"],
+    }
+
+
+def _job_summary(job: dict) -> dict:
+    return {
+        "job_id": job["id"],
+        "filename": job["filename"],
+        "rows": job["rows"],
+        "mode": job["mode"],
+        "status": job["status"],
+        "flagged_rows": job["flagged_rows"],
+        "demo": job["demo"],
+        "created_at": job["created_at"],
+        "expires_at": job["expires_at"],
+    }
+
+
+def _store_upload(request: Request, raw: bytes, filename: str, demo: bool) -> dict:
+    store.delete_expired()
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > MAX_UPLOAD_MB:
+        raise HTTPException(413, f"File is {size_mb:.1f}MB — limit is {MAX_UPLOAD_MB}MB.")
+    try:
+        contents, _ = normalize_csv(raw)
+        df = _read_csv(contents)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"Could not read CSV: {e}")
+
+    _enforce_upload_limits(raw, df)
+
+    owner = _owner(request)
+    _make_room_for_upload(owner)
+    upload = store.add_upload(owner, filename, contents, rows=len(df), columns=list(df.columns),
+                              keep_seconds=_keep_seconds(_user(request), demo), demo=demo)
+    return _upload_summary(upload)
+
+
+# ── Pages ──
 
 @app.get("/")
 async def home():
@@ -127,70 +231,102 @@ async def results_page():
     return FileResponse("static/results.html")
 
 
-def _get_upload(upload_id: str) -> dict:
-    upload = _uploads.get(upload_id)
-    if not upload:
-        raise HTTPException(404, "That upload has expired. Please upload your CSV again.")
-    return upload
+@app.get("/files")
+async def files_page():
+    return FileResponse("static/files.html")
 
 
-def _upload_summary(upload_id: str, upload: dict) -> dict:
+@app.get("/sign-in")
+async def sign_in_page():
+    if auth.AUTH_MODE != "dev":
+        return RedirectResponse("/app")
+    return FileResponse("static/sign-in.html")
+
+
+# ── Account ──
+
+@app.get("/me")
+async def me(request: Request):
+    """What the pages need to show the account menu, limits and how long results are kept."""
+    user = _user(request)
     return {
-        "upload_id": upload_id,
-        "filename": upload["filename"],
-        "rows": upload["rows"],
-        "columns": upload["columns"],
+        "accounts": auth.accounts_enabled(),
+        "signed_in": user is not None,
+        "email": user["email"] if user else None,
+        "plan": user["plan"] if user else None,
+        "keep_hours": _keep_seconds(user, demo=False) / 3600,
+        "demo_keep_hours": JOB_FILE_TTL_SECONDS / 3600,
+        **_usage(user),
     }
 
+
+@app.post("/auth/dev-sign-in")
+async def dev_sign_in(request: Request, email: str = Form(...), next: str = Form(default="/files")):
+    if auth.AUTH_MODE != "dev":
+        raise HTTPException(404, "Not found")
+    email = email.strip()
+    if "@" not in email or len(email) > 254:
+        raise HTTPException(400, "Please enter an email address.")
+    user = store.upsert_user(auth.dev_user_id(email), email)
+    # Runs this browser made before signing in move to the account.
+    store.move_owner("session:" + auth.session_id(request), user["id"])
+    target = next if next.startswith("/") and not next.startswith("//") else "/files"
+    response = RedirectResponse(target, status_code=303)
+    auth.sign_in(request, response, user["id"])
+    return response
+
+
+@app.post("/auth/sign-out")
+async def sign_out():
+    response = RedirectResponse("/app", status_code=303)
+    auth.sign_out(response)
+    return response
+
+
+@app.delete("/account")
+async def delete_account(request: Request):
+    """Deletes the account with every upload, run and file it has."""
+    user = _user(request)
+    if not user:
+        raise HTTPException(401, "You're not signed in.")
+    store.delete_owner(user["id"])
+    response = JSONResponse({"deleted": True})
+    auth.sign_out(response)
+    return response
+
+
+# ── Uploads ──
 
 @app.post("/upload")
-async def upload_csv(csv_file: UploadFile = File(...)):
-    """Check and hold a CSV so the schema and results pages can use it by id."""
-    _cleanup_old_jobs()
+async def upload_csv(request: Request, csv_file: UploadFile = File(...)):
+    """Check and save a CSV so the schema and results pages can use it by id."""
+    if auth.accounts_enabled() and not _user(request):
+        raise HTTPException(401, "Please sign in to clean your own file. The demo data works without an account.")
+    return _store_upload(request, await csv_file.read(), csv_file.filename or "upload.csv", demo=False)
 
-    raw = await csv_file.read()
-    size_mb = len(raw) / (1024 * 1024)
-    if size_mb > MAX_UPLOAD_MB:
-        raise HTTPException(413, f"File is {size_mb:.1f}MB — limit is {MAX_UPLOAD_MB}MB.")
-    try:
-        contents, _ = normalize_csv(raw)
-        df = _read_csv(contents)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(400, f"Could not read CSV: {e}")
 
-    _enforce_upload_limits(raw, df)
-
-    while len(_uploads) >= MAX_STORED_UPLOADS:
-        _uploads.pop(min(_uploads, key=lambda u: _uploads[u]["created_at"]))
-
-    upload_id = str(uuid.uuid4())
-    _uploads[upload_id] = {
-        "contents": contents,
-        "filename": csv_file.filename,
-        "rows": len(df),
-        "columns": list(df.columns),
-        "created_at": time.time(),
-    }
-    return _upload_summary(upload_id, _uploads[upload_id])
+@app.post("/upload-demo")
+async def upload_demo(request: Request):
+    """The bundled demo file, which anyone can run without signing in."""
+    return _store_upload(request, DEMO_FILE.read_bytes(), DEMO_FILE.name, demo=True)
 
 
 @app.get("/uploads/{upload_id}")
-async def upload_info(upload_id: str):
-    return _upload_summary(upload_id, _get_upload(upload_id))
+async def upload_info(request: Request, upload_id: str):
+    return _upload_summary(_get_upload(request, upload_id))
 
 
 @app.post("/infer-schema")
 async def infer_schema_endpoint(
+    request: Request,
     upload_id: str = Form(...),
     rules: str = Form(default=""),
 ):
     """Scan the CSV and apply any rules: returns a draft schema, questions and decisions."""
-    upload = _get_upload(upload_id)
+    upload = _get_upload(request, upload_id)
 
     try:
-        draft = infer_schema(_read_csv(upload["contents"], dtype=str), rules)
+        draft = infer_schema(_read_csv(store.upload_contents(upload["id"]), dtype=str), rules)
         # Validate it parses correctly before sending back
         DataSchema.model_validate(draft["schema"])
         return draft
@@ -198,18 +334,22 @@ async def infer_schema_endpoint(
         raise HTTPException(422, f"Could not generate schema: {e}")
 
 
+# ── Runs ──
+
 @app.post("/clean")
 async def clean(
+    request: Request,
     upload_id: str = Form(...),
     schema_json: str = Form(...),
     mode: str = Form(default="clean"),
 ):
     global _active_job
 
-    _cleanup_old_jobs()
+    store.delete_expired()
 
     with _job_lock:
-        if _active_job and not _jobs.get(_active_job, {}).get("done"):
+        active = store.get_job(_active_job, None) if _active_job else None
+        if active and active["status"] in UNFINISHED:
             raise HTTPException(409, "A job is already running — please wait for it to finish.")
 
     try:
@@ -217,56 +357,67 @@ async def clean(
     except Exception as e:
         raise HTTPException(400, f"Invalid schema JSON: {e}")
 
-    contents = _get_upload(upload_id)["contents"]
+    upload = _get_upload(request, upload_id)
+    user = _user(request)
+    usage = _usage(user)
+    if not upload["demo"] and usage["run_limit"] is not None and usage["runs_this_month"] >= usage["run_limit"]:
+        raise HTTPException(
+            429, f"You've used all {usage['run_limit']} runs on your plan this month. "
+                 "Runs reset on the 1st. The demo data still works.")
+
+    contents = store.upload_contents(upload["id"])
     df = _read_csv(contents)
 
-    job_id = str(uuid.uuid4())
-    output_path = f"data/{job_id}_clean.csv"
-    events: list[dict] = []
-
-    _jobs[job_id] = {
-        "events": events,
-        "output_path": output_path,
-        "contents": contents,
-        "done": False,
-        "created_at": time.time(),
-    }
+    job = store.add_job(_owner(request), upload, mode, schema.model_dump(),
+                        keep_seconds=_keep_seconds(user, upload["demo"]))
+    job_id = job["id"]
+    output_path = store.output_path(job_id)
 
     with _job_lock:
         _active_job = job_id
 
+    def on_log(event: dict) -> None:
+        store.add_event(job_id, event)
+
     def run():
         try:
-            run_agent(df, schema, output_path=output_path, mode=mode, on_log=events.append)
-            _jobs[job_id]["issues"] = tools.get_error_log()
-            _jobs[job_id]["done"] = True
-            report_url = f"/download/{job_id}?file=report"
-            events.append({"type": "done", "download_url": f"/download/{job_id}", "report_url": report_url})
+            run_agent(df, schema, output_path=str(output_path), mode=mode, on_log=on_log)
+            flagged = None
+            if output_path.exists():
+                try:
+                    review = build_review(contents, str(output_path), tools.get_error_log())
+                    store.save_review(job_id, review)
+                    flagged = review["flagged_rows"]
+                except Exception as exc:
+                    on_log({"type": "warning", "message": f"The review couldn't be prepared: {exc}"})
+            store.update_job(job_id, status="done", flagged_rows=flagged, finished_at=time.time())
+            on_log({"type": "done", "download_url": f"/download/{job_id}",
+                    "report_url": f"/download/{job_id}?file=report"})
         except Exception as exc:
-            _jobs[job_id]["done"] = True
-            events.append({"type": "error", "message": _run_error_message(exc)})
+            message = _run_error_message(exc)
+            store.update_job(job_id, status="error", error=message, finished_at=time.time())
+            on_log({"type": "error", "message": message})
 
     threading.Thread(target=run, daemon=True).start()
     return {"job_id": job_id}
 
 
 @app.get("/stream/{job_id}")
-async def stream(job_id: str):
-    if job_id not in _jobs:
-        raise HTTPException(404, "Job not found")
-
-    events: list[dict] = _jobs[job_id]["events"]
+async def stream(request: Request, job_id: str):
+    _get_job(request, job_id)
 
     # Every connection replays the run from the start, so refreshing the page loses nothing.
     async def generate():
         sent = 0
         while True:
-            while sent < len(events):
-                msg = events[sent]
-                sent += 1
+            new = store.events(job_id, after=sent)
+            for seq, msg in new:
+                sent = seq
                 yield f"data: {json.dumps(msg)}\n\n"
                 if msg.get("type") in ("done", "error"):
                     return
+            if not new and store.get_job(job_id, None) is None:
+                return  # deleted while someone was watching
             yield ": keepalive\n\n"
             await asyncio.sleep(0.3)
 
@@ -278,34 +429,49 @@ async def stream(job_id: str):
 
 
 @app.get("/download/{job_id}")
-async def download(job_id: str, file: str = "csv"):
-    if job_id not in _jobs:
-        raise HTTPException(404, "Job not found")
+async def download(request: Request, job_id: str, file: str = "csv"):
+    _get_job(request, job_id)
+    output_path = str(store.output_path(job_id))
     if file == "report":
-        path = derive_report_path(_jobs[job_id]["output_path"])
-        filename = "error_report.csv"
+        path, filename = derive_report_path(output_path), "error_report.csv"
     else:
-        path = _jobs[job_id]["output_path"]
-        filename = "output.csv"
+        path, filename = output_path, "output.csv"
     if not Path(path).exists():
         raise HTTPException(404, "File not ready yet")
     return FileResponse(path, media_type="text/csv", filename=filename)
 
 
 @app.get("/review/{job_id}")
-async def review(job_id: str):
+async def review(request: Request, job_id: str):
     """The finished output and error report, ready to show on the results page."""
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(404, "Job not found")
-    if not job.get("done"):
+    job = _get_job(request, job_id)
+    if job["status"] in UNFINISHED:
         raise HTTPException(409, "The agent is still running.")
-    if "review" not in job:
-        if not Path(job["output_path"]).exists():
-            raise HTTPException(404, "This run didn't produce a file to review.")
-        job["review"] = build_review(job["contents"], job["output_path"], job.get("issues", []))
-        job["contents"] = None
-    return job["review"]
+    saved = store.load_review(job_id)
+    if saved is None:
+        raise HTTPException(404, "This run didn't produce a file to review.")
+    return saved
+
+
+@app.get("/api/jobs")
+async def list_jobs(request: Request):
+    """The runs on the My files page: the account's, or this browser's when signed out."""
+    store.delete_expired()
+    return [_job_summary(job) for job in store.jobs_of(_owner(request))]
+
+
+@app.get("/api/jobs/{job_id}")
+async def job_info(request: Request, job_id: str):
+    return _job_summary(_get_job(request, job_id))
+
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(request: Request, job_id: str):
+    job = _get_job(request, job_id)
+    if job["status"] in UNFINISHED:
+        raise HTTPException(409, "This run is still going. You can delete it once it finishes.")
+    store.delete_job(job_id)
+    return {"deleted": job_id}
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

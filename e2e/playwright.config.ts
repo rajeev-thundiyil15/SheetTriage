@@ -1,7 +1,19 @@
 import { defineConfig, devices } from '@playwright/test';
 import { defineBddProject } from 'playwright-bdd';
 
+// Two copies of the app with the scripted agent: one as the live site runs today (no
+// accounts), and one with the development sign-in turned on for the account tests.
 const PORT = 8010;
+const ACCOUNTS_PORT = 8011;
+
+const server = (port: number, authMode: string) => ({
+  command: 'uv run --no-project --python 3.14 --with-requirements requirements.txt python e2e/fake_agent_server.py',
+  cwd: '..',
+  env: { PORT: String(port), AUTH_MODE: authMode },
+  url: `http://127.0.0.1:${port}/app`,
+  reuseExistingServer: !process.env.CI,
+  timeout: 120_000,
+});
 
 export default defineConfig({
   // The app runs one cleaning job at a time, so tests can't run side by side.
@@ -23,12 +35,11 @@ export default defineConfig({
       ...defineBddProject({ name: 'cucumber', features: 'features/*.feature', steps: 'steps/*.ts' }),
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'accounts',
+      testDir: './account-tests',
+      use: { ...devices['Desktop Chrome'], baseURL: `http://127.0.0.1:${ACCOUNTS_PORT}` },
+    },
   ],
-  webServer: {
-    command: 'uv run --no-project --python 3.14 --with-requirements requirements.txt python e2e/fake_agent_server.py',
-    cwd: '..',
-    url: `http://127.0.0.1:${PORT}/app`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [server(PORT, 'off'), server(ACCOUNTS_PORT, 'dev')],
 });

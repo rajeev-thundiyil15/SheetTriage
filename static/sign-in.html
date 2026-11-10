@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — Sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --text: #09090b; --text-muted: #71717a; --border: #e4e4e7; --bg: #fafafa; --surface: #fff; --accent: #18181b; --radius: 8px; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; padding: 0 32px; height: 52px; background: #fff; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 14px; font-weight: 700; color: var(--text); text-decoration: none; }
+    main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; }
+    .card { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; }
+    h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .sub { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; }
+    label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+    input { width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+    input:focus { border-color: #a1a1aa; }
+    button { width: 100%; margin-top: 14px; padding: 10px; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: var(--radius); cursor: pointer; }
+    .dev-note { margin-top: 18px; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: #713f12; background: #fefce8; border: 1px solid #fde047; border-radius: 6px; }
+    @media (max-width: 560px) { nav { padding: 0 16px; } }
+  </style>
+</head>
+<body>
+<nav><a href="/" class="nav-logo">SheetTriage</a></nav>
+<main>
+  <form class="card" method="post" action="/auth/dev-sign-in">
+    <h1>Sign in</h1>
+    <p class="sub">Keep your cleaned files for 7 days and see them on any device.</p>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email" required>
+    <input id="next" name="next" type="hidden" value="/files">
+    <button type="submit">Continue</button>
+    <p class="dev-note">Development sign-in: any email works and there's no password. The live site will use Clerk's sign-in here instead.</p>
+  </form>
+</main>
+<script>
+  const next = new URLSearchParams(location.search).get('next');
+  if (next && next.startsWith('/') && !next.startsWith('//')) document.getElementById('next').value = next;
+</script>
+</body>
+</html>

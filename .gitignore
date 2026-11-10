@@ -18,6 +18,9 @@ build/
 data/*_clean.csv
 data/*_report.csv
 data/*.csv
+data/sheettriage.db*
+data/uploads/
+data/jobs/
 !data/dirty_employees.csv
 !data/dirty_products.csv
 
@@ -29,6 +32,7 @@ Thumbs.db
 node_modules/
 e2e/test-results/
 e2e/playwright-report/
+e2e/.data-*/
 
 # Personal Claude Code settings
 .claude/settings.local.json
