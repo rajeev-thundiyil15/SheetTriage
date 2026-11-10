@@ -562,15 +562,18 @@
       document.getElementById('columns-list').textContent = headers.join(', ');
       document.getElementById('columns-detected').style.display = 'block';
 
-      // Show warning if file exceeds recommended limits
-      if (rowCount > 1000 || colCount > 15) {
+      // Uploads are capped at 5 MB and 30,000 rows. Run time grows with columns more than rows:
+      // a clean run on 30,000 rows and 9 columns took about 2 minutes.
+      const notes = [];
+      if (rowCount > 30000) notes.push(`This file has about ${rowCount.toLocaleString()} rows, over the 30,000-row limit, so it will be refused.`);
+      else if (rowCount > 5000) notes.push(`About ${rowCount.toLocaleString()} rows: a run this size can take 1 to 2 minutes.`);
+      if (f.size > 5 * 1024 * 1024) notes.push(`This file is ${(f.size / 1024 / 1024).toFixed(1)} MB, over the 5 MB limit, so it will be refused.`);
+      if (colCount > 15) notes.push(`${colCount} columns: each column adds checking steps, so the run takes longer.`);
+      if (notes.length) {
         const warn = document.createElement('div');
         warn.id = 'size-warning';
         warn.style.cssText = 'margin-top:8px; padding:10px 12px; background:#fefce8; border:1px solid #fde047; border-radius:8px; font-size:12px; color:#713f12; line-height:1.6;';
-        const parts = [];
-        if (rowCount > 1000) parts.push(`${rowCount.toLocaleString()} rows (recommended: under 1,000)`);
-        if (colCount > 15)   parts.push(`${colCount} columns (recommended: under 15)`);
-        warn.textContent = `Large file detected — ${parts.join(' and ')}. The agent will still run but may take several minutes and cost more to process.`;
+        warn.textContent = notes.join(' ');
         document.getElementById('drop-zone').parentElement.appendChild(warn);
       }
     };
