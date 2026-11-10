@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -238,7 +238,7 @@ async def files_page():
 
 @app.get("/sign-in")
 async def sign_in_page():
-    if auth.AUTH_MODE != "dev":
+    if not auth.accounts_enabled():
         return RedirectResponse("/app")
     return FileResponse("static/sign-in.html")
 
@@ -251,6 +251,8 @@ async def me(request: Request):
     user = _user(request)
     return {
         "accounts": auth.accounts_enabled(),
+        "auth_mode": auth.AUTH_MODE,
+        "google_client_id": auth.GOOGLE_CLIENT_ID if auth.AUTH_MODE == "google" else None,
         "signed_in": user is not None,
         "email": user["email"] if user else None,
         "plan": user["plan"] if user else None,
@@ -260,6 +262,41 @@ async def me(request: Request):
     }
 
 
+def _safe_next(next: str) -> str:
+    return next if next.startswith("/") and not next.startswith("//") else "/files"
+
+
+def _finish_sign_in(request: Request, response: Response, user_id: str, email: str) -> None:
+    store.upsert_user(user_id, email)
+    # Runs this browser made before signing in move to the account.
+    store.move_owner("session:" + auth.session_id(request), user_id)
+    auth.sign_in(request, response, user_id)
+
+
+@app.post("/auth/google")
+async def google_sign_in(request: Request):
+    """Signs in with the token Google's button hands the sign-in page."""
+    if auth.AUTH_MODE != "google":
+        raise HTTPException(404, "Not found")
+    # Only the site's own pages can send JSON here: another site can't, so it can't sign
+    # someone into an account that isn't theirs.
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise HTTPException(415, "Expected JSON.")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/") and             origin.split("://")[-1] != request.headers.get("host", ""):
+        raise HTTPException(403, "Sign-in has to come from this site.")
+    try:
+        body = await request.json()
+        user_id, email = auth.google_user(str(body.get("credential", "")))
+    except auth.SignInError as e:
+        raise HTTPException(401, str(e))
+    except Exception:
+        raise HTTPException(400, "The Google sign-in didn't come through. Please try again.")
+    response = JSONResponse({"next": _safe_next(str(body.get("next", "/files")))})
+    _finish_sign_in(request, response, user_id, email)
+    return response
+
+
 @app.post("/auth/dev-sign-in")
 async def dev_sign_in(request: Request, email: str = Form(...), next: str = Form(default="/files")):
     if auth.AUTH_MODE != "dev":
@@ -267,12 +304,8 @@ async def dev_sign_in(request: Request, email: str = Form(...), next: str = Form
     email = email.strip()
     if "@" not in email or len(email) > 254:
         raise HTTPException(400, "Please enter an email address.")
-    user = store.upsert_user(auth.dev_user_id(email), email)
-    # Runs this browser made before signing in move to the account.
-    store.move_owner("session:" + auth.session_id(request), user["id"])
-    target = next if next.startswith("/") and not next.startswith("//") else "/files"
-    response = RedirectResponse(target, status_code=303)
-    auth.sign_in(request, response, user["id"])
+    response = RedirectResponse(_safe_next(next), status_code=303)
+    _finish_sign_in(request, response, auth.dev_user_id(email), email)
     return response
 
 
