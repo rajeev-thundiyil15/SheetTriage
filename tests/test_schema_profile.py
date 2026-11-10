@@ -47,10 +47,48 @@ def test_a_middle_number_above_12_settles_month_first_without_asking():
     assert not draft["questions"]
 
 
-def test_mixed_orders_are_asked_about():
+def test_an_even_mix_of_orders_is_asked_about_with_no_suggestion():
     draft = scan(signed=["25/04/2024", "04/25/2024"])
+    q = question(draft, "date_format:signed")
 
-    assert "mix both" in question(draft, "date_format:signed")["why"]
+    assert q["recommended"] is None
+    assert "1 date(s) only work month first" in q["why"]
+    assert "1 only work day first" in q["why"]
+
+
+def test_when_one_order_clearly_wins_it_is_suggested():
+    # The 30,000-row test: 99% month first, but nothing was suggested and day first flagged 17,018 good dates.
+    draft = scan(signed=[f"02/{d}/2026" for d in range(13, 29)] * 10 + ["13/02/2026"])
+    q = question(draft, "date_format:signed")
+
+    assert q["required"] is True
+    assert q["options"][q["recommended"]]["patch"] == {"date_format": "MDY"}
+    assert "160 date(s) only work month first" in q["why"]
+    assert "Most dates are month first" in q["why"]
+    assert draft["schema"]["columns"]["signed"]["date_format"] == "MDY"
+
+
+def test_a_clear_day_first_majority_is_suggested_too():
+    draft = scan(signed=[f"{d}/02/2026" for d in range(13, 29)] * 10 + ["02/13/2026"])
+
+    assert draft["schema"]["columns"]["signed"]["date_format"] == "DMY"
+
+
+# ---------------------------------------------------------------------------
+# Numbers written as decimals, and money columns
+# ---------------------------------------------------------------------------
+
+def test_numbers_written_with_decimals_are_drafted_as_decimals():
+    assert scan(fee_total=["45.00", "20.00", "180.00"])["schema"]["columns"]["fee_total"]["dtype"] == "float"
+
+
+def test_money_columns_are_decimals_even_when_whole():
+    assert scan(price=["45", "20", "180"])["schema"]["columns"]["price"]["dtype"] == "float"
+
+
+def test_whole_numbers_stay_whole():
+    assert scan(quantity=["1", "2", "3"])["schema"]["columns"]["quantity"]["dtype"] == "int"
+    assert scan(order_count=["1", "2"])["schema"]["columns"]["order_count"]["dtype"] == "int"
 
 
 def test_iso_dates_are_decided_and_bad_values_reported():
@@ -73,6 +111,30 @@ def test_near_duplicates_become_an_allowed_values_question():
     assert q["options"][0]["patch"]["allowed_values"] == ["Electronics", "Sports"]
     assert "'Electronis' looks like 'Electronics'" in q["why"]
     assert draft["schema"]["columns"]["category"]["allowed_values"] == ["Electronics", "Sports"]
+
+
+def test_rare_values_are_left_out_of_the_suggested_list():
+    # The 30,000-row test offered 'U.S.' and 'Untied Kingdom' as allowed countries.
+    draft = scan(country=["USA"] * 450 + ["UK"] * 150 + ["Canada"] * 150 + ["usa"] * 4 + ["U.S."] * 5 + ["Untied Kingdom"] * 4)
+    q = question(draft, "allowed:country")
+
+    assert q["options"][0]["patch"]["allowed_values"] == ["USA", "UK", "Canada"]
+    assert "Left out because they're rare: 'Untied Kingdom' (4), 'U.S.' (5)" in q["why"]
+    assert q["options"][2]["patch"]["allowed_values"] == ["USA", "UK", "Canada", "Untied Kingdom", "U.S."]
+    assert draft["schema"]["columns"]["country"]["allowed_values"] == ["USA", "UK", "Canada"]
+
+
+def test_a_value_seen_once_is_rare_when_the_others_repeat():
+    draft = scan(ticket=["General"] * 9 + ["VIP"] * 8 + ["Student"] * 7 + ["Early Bird"])
+
+    assert question(draft, "allowed:ticket")["options"][0]["patch"]["allowed_values"] == ["General", "VIP", "Student"]
+
+
+def test_an_uncommon_but_real_value_is_kept():
+    draft = scan(ticket=["General"] * 60 + ["Student"] * 20 + ["VIP"] * 15 + ["Speaker"] * 5)
+
+    assert "Speaker" in question(draft, "allowed:ticket")["options"][0]["patch"]["allowed_values"]
+    assert len(question(draft, "allowed:ticket")["options"]) == 2
 
 
 def test_two_common_similar_values_are_not_merged():

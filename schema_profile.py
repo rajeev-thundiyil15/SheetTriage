@@ -19,6 +19,9 @@ MAX_QUESTIONS = 5
 MAX_LIST_VALUES = 20
 FREE_TEXT_NAME = re.compile(r"(?:^|[\W_])(?:notes?|comments?|remarks?|descriptions?|memo|feedback|details?)(?:$|[\W_])", re.IGNORECASE)
 FUZZY_MATCH = 0.8
+CLEAR_DATE_ORDER = 0.9  # share of the telling dates one order needs before it's suggested
+RARE_VALUE = 10  # a value this many times rarer than the typical one looks like a mistake
+MONEY_NAME = re.compile(r"(?:^|[\W_])(?:price|cost|amount|fee|salary|pay|revenue|balance)s?(?:$|[\W_])", re.IGNORECASE)
 TEXT_DATE = re.compile(r"^([A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9}\.? \d{4})$")
 
 
@@ -65,6 +68,25 @@ def _readings(values: list[str]) -> str:
     return values[0]
 
 
+def _example_over_12(values: list[str], group: int) -> str:
+    """A date whose first (group 1) or middle (group 2) number is above 12."""
+    return next(v for v in values if (m := NUMERIC_DATE.match(v)) and int(m.group(group)) > 12)
+
+
+def _rare_values(totals: dict[str, int]) -> list[str]:
+    """Values far rarer than the typical one, such as 'Untied Kingdom' beside 'UK', or seen
+    only once where the others repeat. Only judged with at least three distinct values, so a
+    two-value column keeps both."""
+    if len(totals) < 3:
+        return []
+    ordered = sorted(totals.values())
+    median = ordered[len(ordered) // 2]
+    return [
+        v for v, n in sorted(totals.items(), key=lambda item: item[1])
+        if n * RARE_VALUE <= median or (n == 1 and median >= 4)
+    ]
+
+
 def _value_clusters(counts: Counter) -> dict[str, list[str]]:
     """Maps each canonical value to its likely misspellings and case variants."""
     clusters: dict[str, list[str]] = {}
@@ -104,24 +126,33 @@ def _date_findings(column: str, values: list[str], counts: dict) -> tuple[dict, 
         })
     else:
         example = _readings([v for v in values if NUMERIC_DATE.match(v)])
-        mixed = counts["first_over_12"] and counts["second_over_12"]
+        day_first, month_first = counts["first_over_12"], counts["second_over_12"]
+        mixed = day_first and month_first
+        recommended = None
+        if mixed:
+            why = (
+                f"{month_first:,} date(s) only work month first, such as {_example_over_12(values, 2)}, "
+                f"and {day_first:,} only work day first, such as {_example_over_12(values, 1)}. "
+                "Whichever you choose, the others are flagged for review."
+            )
+            if max(day_first, month_first) >= CLEAR_DATE_ORDER * (day_first + month_first):
+                recommended = 0 if day_first > month_first else 1
+                why += f" Most dates are {'day' if recommended == 0 else 'month'} first, so that's suggested."
+        else:
+            why = f"{counts['numeric']:,} date(s) could be read either way, and a wrong guess would change them without any warning."
         questions.append({
             "id": f"date_format:{column}",
             "column": column,
             "priority": 0,
             "required": True,
             "question": f"How should dates like {example} in {column} be read?",
-            "why": (
-                "This column seems to mix both date orders, so one choice will flag the others."
-                if mixed else
-                f"{counts['numeric']:,} date(s) could be read either way, and a wrong guess would change them without any warning."
-            ),
+            "why": why,
             "options": [
                 {"label": "Day first (DD/MM/YYYY)", "patch": {"date_format": "DMY"}},
                 {"label": "Month first (MM/DD/YYYY)", "patch": {"date_format": "MDY"}},
                 {"label": "Not sure: flag them for review", "patch": {"date_format": None}},
             ],
-            "recommended": None,
+            "recommended": recommended,
         })
 
     if counts["bad"]:
@@ -134,7 +165,10 @@ def _date_findings(column: str, values: list[str], counts: dict) -> tuple[dict, 
 
 
 def _number_findings(column: str, values: list[str], numeric: list[float]) -> tuple[dict, list[dict], list[dict]]:
-    dtype = "int" if all(n == int(n) for n in numeric) else "float"
+    # 45.00 is a whole number, but it was written as a decimal, so the column holds decimals.
+    written_as_decimal = any("." in v for v in values if _is_number(v))
+    whole = all(n == int(n) for n in numeric) and not written_as_decimal and not MONEY_NAME.search(column)
+    dtype = "int" if whole else "float"
     patch: dict = {"dtype": dtype}
     decisions: list[dict] = []
     questions: list[dict] = []
@@ -188,18 +222,29 @@ def _text_findings(column: str, values: list[str]) -> tuple[dict, list[dict], li
         decisions.append({"column": column, "decision": "Check for valid email addresses", "reason": "The column name says it holds emails."})
     elif 2 <= len(counts) <= MAX_LIST_VALUES and len(values) >= 20 and len(counts) <= len(values) / 2:
         clusters = _value_clusters(counts)
-        canonical = list(clusters)
-        variants = [f"'{v}' looks like '{c}'" for c, vs in clusters.items() for v in vs]
+        totals = {c: counts[c] + sum(counts[v] for v in vs) for c, vs in clusters.items()}
+        rare = _rare_values(totals)
+        canonical = [c for c in clusters if c not in rare]
+        variants = [f"'{v}' looks like '{c}'" for c, vs in clusters.items() if c not in rare for v in vs]
+        reasons = variants[:3]
+        if variants:
+            reasons.append("Clean mode can correct these")
+        if rare:
+            named = ", ".join(f"'{v}' ({totals[v]:,})" for v in rare[:3])
+            reasons.append(f"Left out because they're rare: {named}. They'll be flagged unless you include them")
+        options = [
+            {"label": f"Yes, only these {len(canonical)}", "patch": {"allowed_values": canonical}},
+            {"label": "No, allow any text", "patch": {"allowed_values": None}},
+        ]
+        if rare:
+            options.append({"label": f"Yes, and also allow the {len(rare)} rare value(s)", "patch": {"allowed_values": canonical + rare}})
         questions.append({
             "id": f"allowed:{column}",
             "column": column,
             "priority": 1,
             "question": f"Should {column} only allow these values: {', '.join(canonical)}?",
-            "why": ". ".join(variants[:3]) + ". Clean mode can correct these." if variants else f"Only {len(canonical)} different values appear across {len(values):,} rows.",
-            "options": [
-                {"label": f"Yes, only these {len(canonical)}", "patch": {"allowed_values": canonical}},
-                {"label": "No, allow any text", "patch": {"allowed_values": None}},
-            ],
+            "why": ". ".join(reasons) + "." if reasons else f"Only {len(canonical)} different values appear across {len(values):,} rows.",
+            "options": options,
             "recommended": 1 if FREE_TEXT_NAME.search(column) else 0,
         })
     return patch, decisions, questions
