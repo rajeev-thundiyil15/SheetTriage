@@ -179,4 +179,4 @@ Types: `int`, `float`, `str`, `date`. `date_format` is `MDY`, `DMY` or `YMD`, an
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
