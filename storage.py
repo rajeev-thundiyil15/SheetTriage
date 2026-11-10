@@ -94,8 +94,8 @@ class Store:
     def _interrupt_unfinished_jobs(self) -> None:
         """A run can't survive a restart, so any left unfinished is marked as cut short."""
         for row in self._query(f"SELECT id FROM jobs WHERE status IN {UNFINISHED}"):
-            self.add_event(row["id"], {"type": "error", "message": INTERRUPTED_MESSAGE})
-            self.update_job(row["id"], status="interrupted", error=INTERRUPTED_MESSAGE, finished_at=time.time())
+            self.finish_job(row["id"], {"type": "error", "message": INTERRUPTED_MESSAGE},
+                            status="interrupted", error=INTERRUPTED_MESSAGE, finished_at=time.time())
 
     # ── Users ──
 
@@ -220,14 +220,24 @@ class Store:
         path = self.job_dir(job_id) / "review.json"
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
+    def finish_job(self, job_id: str, last_event: dict, **fields) -> None:
+        """Saves the final status and the run's last event together, so nobody sees one without the other."""
+        columns = ", ".join(f"{name} = ?" for name in fields)
+        with self._lock, self._db:
+            self._insert_event(job_id, last_event)
+            self._db.execute(f"UPDATE jobs SET {columns} WHERE id = ?", (*fields.values(), job_id))
+
     # ── Progress events ──
+
+    def _insert_event(self, job_id: str, event: dict) -> None:
+        seq = self._db.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM job_events WHERE job_id = ?", (job_id,)).fetchone()[0]
+        self._db.execute("INSERT INTO job_events (job_id, seq, event) VALUES (?, ?, ?)",
+                         (job_id, seq, json.dumps(event)))
 
     def add_event(self, job_id: str, event: dict) -> None:
         with self._lock, self._db:
-            seq = self._db.execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM job_events WHERE job_id = ?", (job_id,)).fetchone()[0]
-            self._db.execute("INSERT INTO job_events (job_id, seq, event) VALUES (?, ?, ?)",
-                             (job_id, seq, json.dumps(event)))
+            self._insert_event(job_id, event)
 
     def events(self, job_id: str, after: int = 0) -> list[tuple[int, dict]]:
         rows = self._query(

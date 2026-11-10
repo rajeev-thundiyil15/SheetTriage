@@ -409,8 +409,11 @@ async def clean(
     with _job_lock:
         _active_job = job_id
 
+    # The run keeps the store it started with, even if the module's is swapped (as tests do).
+    job_store = store
+
     def on_log(event: dict) -> None:
-        store.add_event(job_id, event)
+        job_store.add_event(job_id, event)
 
     def run():
         try:
@@ -419,17 +422,17 @@ async def clean(
             if output_path.exists():
                 try:
                     review = build_review(contents, str(output_path), tools.get_error_log())
-                    store.save_review(job_id, review)
+                    job_store.save_review(job_id, review)
                     flagged = review["flagged_rows"]
                 except Exception as exc:
                     on_log({"type": "warning", "message": f"The review couldn't be prepared: {exc}"})
-            store.update_job(job_id, status="done", flagged_rows=flagged, finished_at=time.time())
-            on_log({"type": "done", "download_url": f"/download/{job_id}",
-                    "report_url": f"/download/{job_id}?file=report"})
+            done = {"type": "done", "download_url": f"/download/{job_id}",
+                    "report_url": f"/download/{job_id}?file=report"}
+            job_store.finish_job(job_id, done, status="done", flagged_rows=flagged, finished_at=time.time())
         except Exception as exc:
             message = _run_error_message(exc)
-            store.update_job(job_id, status="error", error=message, finished_at=time.time())
-            on_log({"type": "error", "message": message})
+            job_store.finish_job(job_id, {"type": "error", "message": message},
+                                 status="error", error=message, finished_at=time.time())
 
     threading.Thread(target=run, daemon=True).start()
     return {"job_id": job_id}
