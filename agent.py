@@ -10,12 +10,28 @@ Tool philosophy (matches tools.py):
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable
 import anthropic
 import pandas as pd
 
 from schema import DataSchema
 import tools as t
+
+
+_EMOJI = re.compile("[☀-➿⬀-⯿\U0001f000-\U0001faff️‍]")
+
+
+def plain_text(text: str) -> str:
+    """The agent's words without markdown or emoji, as the live log shows plain text."""
+    text = _EMOJI.sub("", text)
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^(\s*)[*+]\s+", r"\1- ", text, flags=re.MULTILINE)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
 def derive_report_path(output_path: str) -> str:
@@ -461,7 +477,7 @@ Be brief. One sentence of reasoning per step. Always mark with mark_remaining_vi
                 tool_calls_made.append(block)
 
         if agent_text:
-            _log({"type": "claude_text", "text": " ".join(agent_text)})
+            _log({"type": "claude_text", "text": plain_text(" ".join(agent_text))})
 
         if tool_calls_made:
             tool_results = []

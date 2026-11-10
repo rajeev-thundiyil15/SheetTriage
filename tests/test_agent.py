@@ -134,3 +134,17 @@ def test_running_out_of_iterations_raises(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError):
         run_agent(pd.DataFrame({"a": ["1"]}), SCHEMA, output_path=str(tmp_path / "o.csv"), max_iterations=3)
+
+
+@pytest.mark.parametrize("raw, plain", [
+    ("✅ **Cleaning complete!**", "Cleaning complete!"),
+    ("**Summary:**\n- **Input rows:** 30,000  \n- **Clean rows:** 27,957", "Summary:\n- Input rows: 30,000\n- Clean rows: 27,957"),
+    ("## Results\n* `price`: 459 flagged", "Results\n- price: 459 flagged"),
+    ("Fixed 'Genral' → 'General' in ticket_type.", "Fixed 'Genral' → 'General' in ticket_type."),
+    ("Price is 2 * 3 = 6", "Price is 2 * 3 = 6"),
+    ("Done 🎉 all saved", "Done all saved"),
+])
+def test_agent_text_is_shown_without_markdown_or_emoji(raw, plain):
+    from agent import plain_text
+
+    assert plain_text(raw) == plain
