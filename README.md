@@ -1,139 +1,181 @@
 # SheetTriage
 
-An AI-powered data quality tool that inspects, cleans, and reports on CSV files — field by field, row by row.
+[![Tests](https://github.com/rajeev-thundiyil15/SheetTriage/actions/workflows/tests.yml/badge.svg)](https://github.com/rajeev-thundiyil15/SheetTriage/actions/workflows/tests.yml)
 
-Built with **Python**, **FastAPI**, **Claude AI (Haiku)**, and **pandas**.
+An AI agent that cleans messy CSV files: it fixes what it can safely fix, flags everything else for review, and never quietly changes or drops your data.
 
-![Home page showing three mode cards: Audit Only, Clean + Report, Strict Clean](https://placeholder.com/screenshot)
+**Try it:** [sheettriage-production.up.railway.app](https://sheettriage-production.up.railway.app/app) and click **Try demo data**. No file or sign-up needed.
+
+Built with Python, FastAPI, pandas and Claude Haiku 4.5 (tool use), with pytest and Playwright tests running on every push.
+
+![The review page, showing flagged cells highlighted in a table of cleaned data](docs/screenshots/5-review-flagged.png)
 
 ---
 
-## What it does
+## How it works
 
-Upload a CSV, describe your data rules in plain English (or write a JSON schema), and an AI agent loops through your data: inspecting columns, identifying violations, applying safe fixes, and flagging everything it can't resolve — without silently deleting a single row.
+1. **Upload a CSV.** Excel exports work too: Windows encodings and semicolon-separated files are read correctly.
+2. **Confirm the schema.** SheetTriage scans the file and drafts the rules (types, allowed values, date order, required columns). It only asks about things a wrong guess would get wrong, and pre-selects its suggestion. You can add rules in plain English.
+3. **Run the agent.** Claude works through the file with a set of pandas tools, column by column, while you watch the progress live.
+4. **Review the results** on the page: flagged cells highlighted, corrections marked, an error report you can filter, and both files to download.
 
-### Three modes
-
-| Mode | Behaviour |
+| Mode | What happens to your data |
 |---|---|
-| **Audit Only** | Validates every column and returns an error report. Your data is never changed. |
-| **Clean + Report** | Auto-fixes safe errors (typos, type coercion, date formats). Flags the rest with an `_errors` column. All rows preserved. |
-| **Strict Clean** | Same fixes as Clean, but rows that can't be fully corrected are removed. Output CSV is 100% valid. |
+| **Audit only** | Nothing changes. You get a report of every problem. |
+| **Clean + report** (default) | Safe fixes are applied. Everything else is flagged in an `_errors` column. Every row is kept. |
+| **Strict clean** | Same fixes, and rows that still have problems are left out of the output (they stay in the report). |
 
-### What it catches
-
-- Typos and wrong casing in categorical columns (`"Electronis"` → `"Electronics"`)
-- Numbers stored as text (`"sixty five"` → flagged)
-- Values outside allowed range (`stock_qty: -10` → flagged)
-- Invalid email/pattern formats
-- Missing required fields
-- Wrong date formats (`15/07/2024` → converted)
-- Out-of-range values (`rating: 6.2` when max is 5 → flagged)
+| Schema page | While the agent runs | Summary |
+|---|---|---|
+| ![Schema questions with suggested answers](docs/screenshots/2-schema-questions.png) | ![Live per-column progress and agent log](docs/screenshots/3-agent-running.png) | ![Summary of clean rows and most common issues](docs/screenshots/4-summary.png) |
 
 ---
 
-## Tech stack
+## Design decisions
 
-- **Backend:** FastAPI + Python
-- **AI agent:** Anthropic Claude Haiku via tool use / function calling
-- **Data:** pandas
-- **Frontend:** Vanilla HTML/CSS/JS (no framework)
-- **Schema:** Pydantic
+### 1. The agent never invents a value
+
+A data-cleaning tool that silently "fixes" things can't be trusted, so the tools enforce this rather than the prompt:
+
+- A correction to an allowed value goes through only if it's a case change or a close typo of an allowed value (`vip` → `VIP`, `Studnet` → `Student`). The tool refuses anything else, such as `Early Bird` → `General` or `U.S.` → `USA`, and the value is flagged instead. This rule came from a live test where the model made exactly those guesses.
+- A value that can't be converted keeps its original text and is flagged. Nothing becomes blank.
+- Rows are never deleted unless you choose strict mode.
+- The review counts real corrections separately from cells that were only rewritten in a standard format (`02/14/2026` → `2026-02-14`), so "4 cells corrected" means 4.
+
+### 2. The agent can't finish early
+
+`save_with_report` refuses to save until every column has been checked again after its last change and shows zero open problems. This closed a real bug where the agent reported "all clean" partway through a run.
+
+### 3. Cost depends on agent steps, not rows
+
+The agent never sees the rows themselves. Tools return summaries: problems are grouped by issue with a count and five example rows, and every result fits in the 4,000 characters the agent is shown. Flagging happens on the server (`mark_remaining_violations`), so the agent never sends row lists back.
+
+A clean run on 30,000 rows took 10 agent steps, the same as on 5,000. Keeping results small matters: before the cap, the country check on the 30,000-row file ran to 6,705 characters. That pushed `usa` and `uk` past the cut-off, so the agent never saw them and flagged 108 rows it should have fixed. A test now covers that case.
+
+### 4. The schema is drafted without an API call
+
+The schema page is plain Python (`schema_profile.py`). It turns a guess into a question only when a wrong guess would change data, and settles the rest itself with a stated reason. For example, when one date order clearly wins it shows the counts ("16,908 dates only work month first, 101 only work day first") and pre-selects it. Claude is only called if you write rules in plain English.
+
+### 5. Haiku, because the work is in the tools
+
+Validation and fixing are deterministic pandas code. The model only decides which tool to call next, and Haiku 4.5 does that reliably at a fraction of the price of larger models. Measured costs are below.
+
+### 6. Small on purpose
+
+One job runs at a time, uploads are capped at 5 MB and 30,000 rows, and jobs live in memory for an hour. That keeps a free demo cheap and safe. Accounts, saved jobs and billing are the next phase.
 
 ---
 
-## Getting started
+## Testing
 
-### 1. Clone the repo
+- **182 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages. None call the API.
+- **7 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time:
+  - upload to review;
+  - refreshing the results page;
+  - the demo button from start to finish;
+  - a file with a malformed row being refused;
+  - a semicolon CSV from Excel;
+  - a run that fails partway;
+  - a second run while one is going.
+- **GitHub Actions** runs both suites on every push and keeps the Playwright report and traces.
+- **Live accuracy runs** on the deployed site, using generated files with known planted problems:
+
+| File | Mode | Agent steps | Time | Rows flagged | Expected |
+|---|---|---|---|---|---|
+| 40 rows, run 3 times | Clean | 8–9 | about 22 s | 18, the same 18 each time | 18 |
+| 5,000 rows | Audit | 6 | 18 s | 378, nothing changed | 378 |
+| 5,000 rows | Clean | 10 | 27 s | 318 | 318 |
+| 5,000 rows | Strict | 8 | 26 s | 318, left out of the output | 318 |
+| 30,000 rows | Clean | 10 | about 2 min | 1,935 | 1,935 |
+
+The 40-row file and its answer key are in [`data/`](data/test_registrations_answer_key.md).
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/schema-agent.git
-cd schema-agent
+# Unit tests
+uv run --no-project --with-requirements requirements-dev.txt python -m pytest
+
+# Browser tests (from e2e/; starts the app with the scripted agent on port 8010)
+cd e2e && npm ci && npx playwright install chromium && npx playwright test
 ```
 
-### 2. Add your API key
+---
 
-```bash
-cp .env.example .env
-# Edit .env and paste your Anthropic API key
-# Get one at: https://console.anthropic.com
-```
+## Cost
 
-### 3. Run the server
+These figures were estimated by replaying a clean run with Anthropic's token-counting endpoint, at Haiku 4.5 prices ($1 per million input tokens, $5 per million output tokens):
+
+| File | Typical run (8 requests) | Long run (30 requests) |
+|---|---|---|
+| 5,000 rows | $0.07 | $0.27 |
+| 50,000 rows | $0.11 | $0.42 |
+
+The system prompt and tool definitions are marked for prompt caching. At about 2,400 tokens they are under Haiku 4.5's 4,096-token minimum, so caching doesn't take effect yet.
+
+---
+
+## Run it locally
 
 Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
-uv run --with fastapi --with "uvicorn[standard]" --with python-multipart \
-       --with aiofiles --with anthropic --with pandas \
-       --with pydantic --with python-dotenv \
-       uvicorn app:app --reload --port 8000
+git clone https://github.com/rajeev-thundiyil15/SheetTriage.git
+cd SheetTriage
+cp .env.example .env        # then paste your Anthropic API key
+uv run --no-project --with-requirements requirements.txt uvicorn app:app --reload
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+Open [http://localhost:8000/app](http://localhost:8000/app).
 
-### 4. (Optional) Run via CLI
+There's also a command-line version:
 
 ```bash
-uv run --with anthropic --with pandas --with pydantic --with python-dotenv \
-       main.py <path-to-your.csv> schema/employees.json
+uv run --no-project --with-requirements requirements.txt python main.py data/test_registrations.csv schema/registrations.json
 ```
-
-Bring your own CSV, or write a schema for one under `schema/` (see the format below) and point the command at it.
 
 ---
 
 ## Project structure
 
 ```
-schema-agent/
-├── app.py              # FastAPI server (routes, SSE streaming, job management)
-├── agent.py            # Agentic loop — Claude tool use, mode-aware system prompts
-├── tools.py            # pandas operations exposed as Claude tools
-├── schema.py           # Pydantic schema models
-├── schema_infer.py     # Natural language → schema JSON (single Claude call)
-├── main.py             # CLI entry point
-├── static/
-│   ├── home.html       # Landing page
-│   └── index.html      # Agent UI (upload, NL rules, real-time log, download)
-└── schema/
-    ├── employees.json  # Example schema
-    ├── products.json   # Example schema
-    └── customers.json  # Example schema
+├── app.py               # FastAPI routes: upload, schema draft, run, live stream, review, download
+├── agent.py             # The agent loop: Claude tool use, mode prompts, plain-text log
+├── tools.py             # pandas tools the agent calls, and the save check
+├── csv_input.py         # Reads each upload once into standard UTF-8 CSV
+├── schema_profile.py    # Drafts the schema and its questions without an API call
+├── schema_infer.py      # Applies plain-English rules with one Claude call
+├── review.py            # Lines the output up with the original for the review page
+├── schema.py            # Pydantic schema models
+├── main.py              # Command-line entry point
+├── static/              # Pages: home, upload, schema, results, plus the demo CSV
+├── schema/              # Example schemas (registrations matches the test data)
+├── data/                # 40-row test file and its answer key
+├── tests/               # pytest suite
+├── e2e/                 # Playwright tests, fixtures and the scripted agent server
+└── docs/screenshots/
 ```
-
----
-
-## How the agent works
-
-1. Claude receives the schema description and a set of tool definitions (JSON)
-2. Claude calls `inspect_data` → `validate_column` for each column → fix or mark tools
-3. Each tool call runs a real Python/pandas function and returns the result
-4. Claude reasons over the result and decides the next tool to call
-5. Loop continues until all columns report zero violations, then `save_with_report` is called
-6. Output: annotated CSV + error report CSV
-
-The agent uses **prompt caching** on the system prompt and tool definitions to reduce cost across the 20–30 iterations a typical run takes.
-
----
 
 ## Schema format
 
 ```json
 {
-  "name": "my_dataset",
+  "name": "event_registrations",
   "columns": {
-    "email":  { "dtype": "str",   "nullable": false, "pattern": ".+@.+\\..+" },
-    "age":    { "dtype": "int",   "nullable": false, "min_value": 18, "max_value": 100 },
-    "status": { "dtype": "str",   "nullable": false, "allowed_values": ["Active", "Inactive"] },
-    "score":  { "dtype": "float", "nullable": true,  "min_value": 0, "max_value": 1 }
+    "email":         { "dtype": "str",   "nullable": false, "pattern": ".+@.+\\..+" },
+    "ticket_type":   { "dtype": "str",   "nullable": false, "allowed_values": ["General", "VIP", "Student", "Speaker"] },
+    "price":         { "dtype": "float", "nullable": false, "min_value": 0, "max_value": 500 },
+    "registered_on": { "dtype": "date",  "nullable": false, "date_format": "MDY" },
+    "notes":         { "dtype": "str",   "nullable": true }
   }
 }
 ```
 
-Supported dtypes: `int`, `float`, `str`, `date`
+Types: `int`, `float`, `str`, `date`. `date_format` is `MDY`, `DMY` or `YMD`, and only matters for dates like `03/04/2026` that could be read either way.
 
----
+## Known limitations
+
+- Jobs are held in memory, so a restart or redeploy clears results, and finished files are deleted after an hour.
+- One run at a time. A second visitor is asked to wait.
+- No accounts yet, so anyone with the link can run the agent. The API key has a monthly spending limit.
 
 ## License
 
