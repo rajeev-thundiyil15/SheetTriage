@@ -32,8 +32,8 @@ jobs:
       - name: Type-check the tests
         run: npm run typecheck
       - run: npx playwright install --with-deps chromium
-      - name: Run the browser tests
-        run: npx playwright test
+      - name: Run the browser tests and Cucumber scenarios
+        run: npm test
       - name: Save the report and traces
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

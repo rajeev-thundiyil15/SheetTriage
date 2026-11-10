@@ -80,7 +80,8 @@ One job runs at a time, uploads are capped at 5 MB and 30,000 rows, and jobs liv
   - a semicolon CSV from Excel;
   - a run that fails partway;
   - a second run while one is going.
-- **GitHub Actions** runs both suites and a TypeScript check on every push, keeps the Playwright report and traces, and publishes the latest report from master to [GitHub Pages](https://rajeev-thundiyil15.github.io/SheetTriage/).
+- **3 Cucumber scenarios** in plain English ([`e2e/features/`](e2e/features/clean-a-file.feature)), run by playwright-bdd with the same page objects: the demo from start to finish, a value that breaks a rule being flagged rather than changed, and an unreadable file being refused.
+- **GitHub Actions** runs all of these and a TypeScript check on every push, keeps the Playwright report and traces, and publishes the latest report from master to [GitHub Pages](https://rajeev-thundiyil15.github.io/SheetTriage/).
 - **Live accuracy runs** on the deployed site, using generated files with known planted problems:
 
 | File | Mode | Agent steps | Time | Rows flagged | Expected |
@@ -98,7 +99,7 @@ The 40-row file and its answer key are in [`data/`](data/test_registrations_answ
 uv run --no-project --with-requirements requirements-dev.txt python -m pytest
 
 # Browser tests (from e2e/; starts the app with the scripted agent on port 8010)
-cd e2e && npm ci && npx playwright install chromium && npx playwright test
+cd e2e && npm ci && npx playwright install chromium && npm test
 ```
 
 ---
@@ -153,7 +154,7 @@ uv run --no-project --with-requirements requirements.txt python main.py data/tes
 ├── schema/              # Example schemas (registrations matches the test data)
 ├── data/                # 40-row test file and its answer key
 ├── tests/               # pytest suite
-├── e2e/                 # Playwright tests, page objects, fixtures and the scripted agent server
+├── e2e/                 # Playwright specs, Cucumber features, page objects and the scripted agent server
 └── docs/screenshots/
 ```
 
