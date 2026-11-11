@@ -72,8 +72,9 @@ def ensure_session(request: Request) -> str | None:
 
 
 def set_session_cookie(request: Request, response: Response, value: str) -> None:
-    response.set_cookie(SESSION_COOKIE, value, max_age=60 * 60 * 24 * 365,
-                        httponly=True, samesite="lax", secure=_secure(request))
+    # No expiry date, so the browser forgets it when it closes, and with it the way back to
+    # any results made without signing in.
+    response.set_cookie(SESSION_COOKIE, value, httponly=True, samesite="lax", secure=_secure(request))
 
 
 def signed_in_user_id(request: Request) -> str | None:

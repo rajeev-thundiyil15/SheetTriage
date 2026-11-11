@@ -332,9 +332,9 @@ async def delete_account(request: Request):
 
 @app.post("/upload")
 async def upload_csv(request: Request, csv_file: UploadFile = File(...)):
-    """Check and save a CSV so the schema and results pages can use it by id."""
-    if auth.accounts_enabled() and not _user(request):
-        raise HTTPException(401, "Please sign in to clean your own file. The demo data works without an account.")
+    """Check and save a CSV so the schema and results pages can use it by id.
+
+    Signing in is optional: without it, results belong to this browser and are kept for an hour."""
     return _store_upload(request, await csv_file.read(), csv_file.filename or "upload.csv", demo=False)
 
 

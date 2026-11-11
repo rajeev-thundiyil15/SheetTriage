@@ -743,7 +743,8 @@
     const signedIn = me && me.accounts && me.signed_in;
     document.getElementById('job-note').textContent = signedIn
       ? `Saved to My files until ${until}. Only you can open this link, when you're signed in.`
-      : `Kept until ${until}, and only this browser can open it.`;
+      : `Kept until ${until}, and only this browser can open it.`
+        + (me && me.accounts ? ' Sign in to save it to My files for 7 days.' : '');
     document.getElementById('copy-link-btn').style.display = signedIn ? '' : 'none';
   }
 

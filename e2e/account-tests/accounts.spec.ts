@@ -5,30 +5,31 @@ import { AccountMenu, FilesPage, ResultsPage } from '../pages/fixtures';
 // signs in with its own email, so their saved runs never mix.
 const newEmail = () => `user-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
 
-test('a visitor who is not signed in can try the demo but not upload a file', async ({ uploadPage, schemaPage, resultsPage, filesPage, account }) => {
-  await test.step('the upload page asks them to sign in, and the demo is still there', async () => {
+test('a visitor can clean a file without signing in, kept for an hour', async ({ uploadPage, schemaPage, resultsPage, filesPage, account }) => {
+  await test.step('the upload page works as normal and offers sign-in to save results', async () => {
     await uploadPage.goto();
-    await expect(uploadPage.signInPrompt).toBeVisible();
-    await expect(uploadPage.fileInput).toBeHidden();
-    await expect(uploadPage.demoButton).toBeVisible();
-    await expect(uploadPage.keepNote).toHaveText('Demo results are kept for 1 hour.');
+    await expect(uploadPage.fileInput).toBeAttached();
+    await expect(uploadPage.keepNote).toHaveText(
+      'Results are kept for 1 hour in this browser. Sign in to save them to My files for 7 days instead.');
     await expect(account.signInLink).toBeVisible();
   });
 
-  await test.step('the demo runs from start to finish', async () => {
-    await uploadPage.demoButton.click();
+  await test.step('their own file runs from start to finish', async () => {
+    await uploadPage.chooseFile('orders.csv');
+    await uploadPage.continueButton.click();
     await schemaPage.expectLoaded();
     await schemaPage.runAgent();
     await resultsPage.expectFinished();
-    await expect(resultsPage.title).toHaveText('event_registrations.csv');
+    await expect(resultsPage.title).toHaveText('orders.csv');
     await expect(resultsPage.keepNote).toContainText('only this browser can open it');
+    await expect(resultsPage.keepNote).toContainText('Sign in to save it to My files');
     await expect(resultsPage.copyLink).toBeHidden();
   });
 
   await test.step('My files shows the run and offers to sign in', async () => {
     await filesPage.goto();
     await expect(filesPage.signInNotice).toBeVisible();
-    await expect(filesPage.job('event_registrations.csv')).toContainText('Demo');
+    await expect(filesPage.job('orders.csv')).toContainText('1 row flagged');
   });
 });
 

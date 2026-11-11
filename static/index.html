@@ -173,13 +173,7 @@
     .demo-note { font-size: 12px; color: var(--text-muted); }
     .keep-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: -12px; }
     .keep-note:empty { display: none; }
-    .sign-in-gate p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; }
-    .sign-in-gate strong { color: var(--text); }
-    .gate-btn {
-      display: inline-block; padding: 8px 16px; border-radius: var(--radius);
-      background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none;
-    }
-    .gate-btn:hover { background: var(--accent-hover); }
+    .keep-note a { color: var(--text); font-weight: 500; }
 
     /* ── Schema builder ── */
     .builder-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
@@ -379,11 +373,6 @@
   <div class="card">
 
     <!-- Upload -->
-    <div id="sign-in-gate" class="sign-in-gate" style="display:none">
-      <div class="field-label">1 — Upload CSV</div>
-      <p><strong>Sign in to clean your own file.</strong> Your account keeps results for 7 days and shows them on any device. The demo data below works without an account.</p>
-      <a id="gate-sign-in" href="/sign-in?next=/app" class="gate-btn">Sign in</a>
-    </div>
     <div id="own-file">
       <div class="field-label">1 — Upload CSV</div>
       <div class="upload-zone" id="drop-zone">
@@ -622,10 +611,12 @@
     if (!me) return;
     const note = document.getElementById('keep-note');
     if (me.accounts && !me.signed_in) {
-      document.getElementById('own-file').style.display = 'none';
-      document.getElementById('run-btn').style.display = 'none';
-      document.getElementById('sign-in-gate').style.display = 'block';
-      note.textContent = `Demo results are kept for ${keptFor(me.demo_keep_hours)}.`;
+      note.append(`Results are kept for ${keptFor(me.demo_keep_hours)} in this browser. `);
+      const link = document.createElement('a');
+      link.href = '/sign-in?next=/app';
+      link.id = 'keep-sign-in';
+      link.textContent = 'Sign in';
+      note.append(link, ` to save them to My files for 7 days instead.`);
     } else if (me.accounts) {
       const left = Math.max(0, me.run_limit - me.runs_this_month);
       note.textContent = `Results are saved to My files for ${keptFor(me.keep_hours)}. ${left} of ${me.run_limit} runs left this month.`;

@@ -157,11 +157,23 @@ def test_without_accounts_anyone_can_upload_and_there_is_no_sign_in(store):
 
 # ── Accounts ──
 
-def test_signing_in_is_required_to_upload_your_own_file(accounts):
-    response = upload(browser())
+def test_signing_in_is_optional_and_runs_without_it_are_kept_an_hour(accounts):
+    client = browser()
 
-    assert response.status_code == 401
-    assert "sign in" in response.json()["detail"]
+    job_id = run(client)
+
+    job = web.store.get_job(job_id, None)
+    assert job["owner"].startswith("session:")
+    assert job["expires_at"] - job["created_at"] == pytest.approx(web.JOB_FILE_TTL_SECONDS, abs=5)
+    assert client.get("/me").json()["run_limit"] is None
+
+
+def test_the_browser_session_ends_when_the_browser_closes(accounts):
+    response = browser().get("/me")
+
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith(auth.SESSION_COOKIE + "=")
+    assert "max-age" not in cookie.lower() and "expires" not in cookie.lower()
 
 
 def test_the_demo_works_without_signing_in(accounts):
@@ -207,7 +219,8 @@ def test_an_edited_sign_in_cookie_is_ignored(accounts):
     client.cookies.set(auth.USER_COOKIE, f"{user_id}.0000")
 
     assert client.get("/me").json()["signed_in"] is False
-    assert upload(client).status_code == 401
+    job_id = run(client)
+    assert web.store.get_job(job_id, None)["owner"].startswith("session:")
 
 
 def test_account_runs_are_kept_for_seven_days(accounts):
