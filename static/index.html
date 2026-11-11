@@ -393,7 +393,7 @@
       </div>
     </div>
 
-    <div class="demo-row">
+    <div class="demo-row" id="demo-row" style="display:none">
       <button type="button" class="btn-secondary" id="demo-btn" onclick="tryDemoData()">Try demo data</button>
       <span class="demo-note">No file handy? Use 40 event registrations with 24 planted problems.</span>
     </div>
@@ -606,9 +606,10 @@
     }
   }
 
-  // How long results are kept, and whether this browser has to sign in to upload its own file.
+  // How long results are kept, whether signing in would save them, and (locally) the demo button.
   window.accountReady.then(me => {
     if (!me) return;
+    if (me.demo_data) document.getElementById('demo-row').style.display = 'flex';
     const note = document.getElementById('keep-note');
     if (me.accounts && !me.signed_in) {
       note.append(`Results are kept for ${keptFor(me.demo_keep_hours)} in this browser. `);

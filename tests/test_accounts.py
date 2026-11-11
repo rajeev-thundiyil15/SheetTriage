@@ -265,3 +265,13 @@ def test_deleting_an_account_removes_everything_it_had(accounts):
 
 def test_deleting_an_account_needs_a_sign_in(accounts):
     assert browser().delete("/account").status_code == 401
+
+
+def test_the_demo_file_is_only_offered_locally(store, monkeypatch):
+    client = browser()
+    assert client.get("/me").json()["demo_data"] is True
+
+    monkeypatch.setattr(web, "DEMO_DATA", False)
+
+    assert client.get("/me").json()["demo_data"] is False
+    assert client.post("/upload-demo").status_code == 404

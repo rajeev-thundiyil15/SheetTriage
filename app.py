@@ -56,6 +56,10 @@ MAX_ANONYMOUS_UPLOADS = int(os.getenv("MAX_ANONYMOUS_UPLOADS", "200"))
 
 DEMO_FILE = Path("static/demo/event_registrations.csv")
 
+# The Try demo data button is for local work and the browser tests. It's off on Railway
+# (which sets RAILWAY_ENVIRONMENT) unless DEMO_DATA=on says otherwise.
+DEMO_DATA = os.getenv("DEMO_DATA", "off" if os.getenv("RAILWAY_ENVIRONMENT") else "on").lower() == "on"
+
 store = Store()
 
 # Tool state is shared by the whole process (tools._state), so only one run at a time.
@@ -258,6 +262,7 @@ async def me(request: Request):
         "plan": user["plan"] if user else None,
         "keep_hours": _keep_seconds(user, demo=False) / 3600,
         "demo_keep_hours": JOB_FILE_TTL_SECONDS / 3600,
+        "demo_data": DEMO_DATA,
         **_usage(user),
     }
 
@@ -340,7 +345,9 @@ async def upload_csv(request: Request, csv_file: UploadFile = File(...)):
 
 @app.post("/upload-demo")
 async def upload_demo(request: Request):
-    """The bundled demo file, which anyone can run without signing in."""
+    """The bundled demo file, for local work and the browser tests."""
+    if not DEMO_DATA:
+        raise HTTPException(404, "Not found")
     return _store_upload(request, DEMO_FILE.read_bytes(), DEMO_FILE.name, demo=True)
 
 

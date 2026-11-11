@@ -4,7 +4,7 @@
 
 An AI agent that cleans messy CSV files: it fixes what it can safely fix, flags everything else for review, and never quietly changes or drops your data.
 
-**Try it:** [sheettriage-production.up.railway.app](https://sheettriage-production.up.railway.app/app) and click **Try demo data**. No file or sign-up needed.
+**Try it:** [sheettriage-production.up.railway.app](https://sheettriage-production.up.railway.app/app) and upload any CSV. No sign-up needed. For a file with known problems, download [`static/demo/event_registrations.csv`](static/demo/event_registrations.csv) (40 rows, 24 planted problems). Running locally, the upload page also has a **Try demo data** button.
 
 Built with Python, FastAPI, pandas and Claude Haiku 4.5 (tool use), with pytest and Playwright tests running on every push.
 
