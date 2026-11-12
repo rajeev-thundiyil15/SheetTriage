@@ -65,6 +65,48 @@ test('both downloads hold the run\'s results', async ({ page, uploadPage, schema
   });
 });
 
+test('columns can be turned off and on, in the cleaned data and the error report', async ({ uploadPage, schemaPage, resultsPage }) => {
+  await uploadPage.upload('orders.csv');
+  await schemaPage.expectLoaded();
+  await schemaPage.runAgent();
+  await resultsPage.expectFinished();
+  await expect(resultsPage.reviewPanel).toBeVisible();
+  const email = resultsPage.columnToggle('email');
+  const headers = resultsPage.table.locator('th');
+
+  await test.step('every column starts on, with its issue count', async () => {
+    await expect(email).toHaveAttribute('aria-pressed', 'true');
+    await expect(email).toContainText('1');
+    await expect(headers.filter({ hasText: /^email$/ })).toHaveCount(1);
+  });
+
+  await test.step('turning email off hides it and its flag from the cleaned data', async () => {
+    await email.click();
+    await expect(email).toHaveAttribute('aria-pressed', 'false');
+    await expect(headers.filter({ hasText: /^email$/ })).toHaveCount(0);
+    await expect(resultsPage.flaggedCells).toHaveCount(0);
+    await resultsPage.filter.selectOption('flagged');
+    await expect(resultsPage.page.locator('#review-count')).toHaveText('0 rows');
+  });
+
+  await test.step('the error report follows the same columns', async () => {
+    await resultsPage.errorReportTab.click();
+    await expect(resultsPage.filter).toBeHidden();
+    await expect(resultsPage.page.locator('#review-count')).toHaveText('0 issues');
+    await email.click();
+    await expect(resultsPage.page.locator('#review-count')).toHaveText('Showing 1–1 of 1 issues');
+    await expect(resultsPage.table).toContainText('not-an-email');
+  });
+
+  await test.step('None and All switch every column at once', async () => {
+    await resultsPage.allColumnsToggle.click();
+    await expect(resultsPage.allColumnsToggle).toHaveText('All');
+    await expect(resultsPage.page.locator('.review-empty')).toContainText('No columns are turned on');
+    await resultsPage.allColumnsToggle.click();
+    await expect(resultsPage.page.locator('#review-count')).toHaveText('Showing 1–1 of 1 issues');
+  });
+});
+
 test.describe('at phone width', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

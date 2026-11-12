@@ -250,6 +250,19 @@
       padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; outline: none; min-width: 0;
     }
     .review-tools input { flex: 1 1 160px; }
+    .column-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 12px; }
+    .column-toggles-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-right: 2px; }
+    .column-toggle {
+      display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+      font: inherit; font-size: 12px; color: var(--text-muted); cursor: pointer;
+      padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface);
+    }
+    .column-toggle span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .column-toggle:hover { border-color: #a1a1aa; }
+    .column-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--text); background: var(--bg); }
+    .column-toggle .toggle-count { font-size: 11px; font-weight: 600; color: #92400e; }
+    .column-toggle[aria-pressed="false"] .toggle-count { color: var(--text-muted); }
+    .column-toggle.all-none { color: var(--text-muted); border-style: dashed; }
     .review-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--text-muted); padding: 0 16px 10px; }
     .review-legend span { display: flex; align-items: center; gap: 5px; }
     .legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
@@ -344,6 +357,7 @@
           <select id="review-filter" aria-label="Filter" onchange="reviewPage = 0; renderReview()"></select>
           <input id="review-search" type="search" placeholder="Search" aria-label="Search" oninput="reviewPage = 0; renderReview()">
         </div>
+        <div class="column-toggles" id="column-toggles" role="group" aria-label="Columns to show"></div>
         <div class="review-legend" id="review-legend">
           <span><span class="legend-swatch legend-flagged"></span>Flagged for review</span>
           <span><span class="legend-swatch legend-changed"></span>Corrected by the agent</span>
@@ -561,6 +575,10 @@
   let reviewData = null;
   let reviewTab = 'data';
   let reviewPage = 0;
+  // Columns turned on in the review. Shared by both tabs: the cleaned data shows only these
+  // columns, and the error report lists only issues in them.
+  let shownColumns = new Set();
+  let issueCounts = {};
 
   async function loadReview() {
     try {
@@ -578,8 +596,55 @@
       : `${d.flagged_rows.toLocaleString()} rows flagged and ${d.changed_cells.toLocaleString()} cells corrected, across all ${d.rows_in_output.toLocaleString()} rows.`
         + (d.reformatted_cells ? ` ${d.reformatted_cells.toLocaleString()} more cells were rewritten in a standard format with the same value, such as dates as YYYY-MM-DD.` : '')
         + ' Row numbers match your original file.';
+    issueCounts = {};
+    for (const entry of d.report) issueCounts[entry.column] = (issueCounts[entry.column] || 0) + 1;
+    shownColumns = new Set(reviewColumns());
+    renderColumnToggles();
     document.getElementById('review-panel').classList.add('show');
     setReviewTab('data');
+  }
+
+  // Every column in the output, plus any that only appear in the report, in file order.
+  function reviewColumns() {
+    const columns = [...reviewData.columns];
+    for (const entry of reviewData.report) if (!columns.includes(entry.column)) columns.push(entry.column);
+    return columns;
+  }
+
+  function renderColumnToggles() {
+    const box = document.getElementById('column-toggles');
+    const label = textSpan('column-toggles-label', 'Columns');
+    const columns = reviewColumns();
+    const allOn = columns.every(c => shownColumns.has(c));
+    const allNone = document.createElement('button');
+    allNone.type = 'button';
+    allNone.className = 'column-toggle all-none';
+    allNone.id = 'toggle-all-columns';
+    allNone.textContent = allOn ? 'None' : 'All';
+    allNone.onclick = () => { shownColumns = new Set(allOn ? [] : columns); columnsChanged(); };
+    const toggles = columns.map(column => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'column-toggle';
+      button.dataset.column = column;
+      button.setAttribute('aria-pressed', String(shownColumns.has(column)));
+      // Column names come from the uploaded file, so they only ever go in as text.
+      button.title = column;
+      button.append(textSpan('', column));
+      if (issueCounts[column]) button.append(textSpan('toggle-count', issueCounts[column].toLocaleString()));
+      button.onclick = () => {
+        if (shownColumns.has(column)) shownColumns.delete(column); else shownColumns.add(column);
+        columnsChanged();
+      };
+      return button;
+    });
+    box.replaceChildren(label, allNone, ...toggles);
+  }
+
+  function columnsChanged() {
+    reviewPage = 0;
+    renderColumnToggles();
+    renderReview();
   }
 
   function setReviewTab(tab) {
@@ -590,10 +655,10 @@
     document.getElementById('review-legend').style.display = tab === 'data' ? 'flex' : 'none';
     document.getElementById('review-search').value = '';
 
+    // The column toggles pick columns on both tabs, so only the cleaned data needs the row filter.
     const filter = document.getElementById('review-filter');
-    const options = tab === 'data'
-      ? [['all', 'All rows'], ['flagged', 'Flagged rows'], ['changed', 'Corrected rows']]
-      : [['all', 'All columns'], ...[...new Set(reviewData.report.map(r => r.column))].sort().map(c => [c, c])];
+    filter.style.display = tab === 'data' ? '' : 'none';
+    const options = [['all', 'All rows'], ['flagged', 'Flagged rows'], ['changed', 'Corrected rows']];
     filter.replaceChildren(...options.map(([value, label]) => {
       const option = document.createElement('option');
       option.value = value;
@@ -633,6 +698,7 @@
     const tr = document.createElement('tr');
     tr.append(reviewCell(row.row ?? '', 'row-number'));
     reviewData.columns.forEach((column, i) => {
+      if (!shownColumns.has(column)) return;
       const flagged = row.issues[column];
       const changed = row.changes[column];
       const className = flagged ? 'cell-flagged' : changed !== undefined ? 'cell-changed' : '';
@@ -643,12 +709,14 @@
     const findings = document.createElement('td');
     findings.className = 'wrap';
     for (const [column, was] of Object.entries(row.changes)) {
+      if (!shownColumns.has(column)) continue;
       const line = document.createElement('div');
       line.className = 'finding-changed';
       line.textContent = `${column}: corrected from "${was}"`;
       findings.append(line);
     }
     for (const [column, issues] of Object.entries(row.issues)) {
+      if (!shownColumns.has(column)) continue;
       const line = document.createElement('div');
       line.className = 'finding-flagged';
       line.textContent = `${column}: ${issues.join('; ')}`;
@@ -674,21 +742,22 @@
     const search = document.getElementById('review-search').value.trim().toLowerCase();
     let items, headers, build, noun;
 
+    const inShown = keys => keys.some(column => shownColumns.has(column));
     if (reviewTab === 'data') {
       noun = 'rows';
-      headers = ['Row', ...reviewData.columns, 'What we found'];
+      headers = ['Row', ...reviewData.columns.filter(c => shownColumns.has(c)), 'What we found'];
       build = dataRow;
       items = reviewData.rows.filter(r =>
         (filter === 'all'
-          || (filter === 'flagged' && Object.keys(r.issues).length)
-          || (filter === 'changed' && Object.keys(r.changes).length))
-        && (!search || r.values.join(' ').toLowerCase().includes(search)));
+          || (filter === 'flagged' && inShown(Object.keys(r.issues)))
+          || (filter === 'changed' && inShown(Object.keys(r.changes))))
+        && (!search || r.values.filter((_, i) => shownColumns.has(reviewData.columns[i])).join(' ').toLowerCase().includes(search)));
     } else {
       noun = 'issues';
       headers = ['Row', 'Column', 'Value', 'Issue', 'Row ID'];
       build = reportRow;
       items = reviewData.report.filter(r =>
-        (filter === 'all' || r.column === filter)
+        shownColumns.has(r.column)
         && (!search || `${r.value} ${r.issue} ${r.row_id}`.toLowerCase().includes(search)));
     }
 
@@ -703,9 +772,11 @@
     } else {
       const empty = document.createElement('div');
       empty.className = 'review-empty';
-      empty.textContent = reviewTab === 'report' && !reviewData.report.length
-        ? 'No issues found.'
-        : 'Nothing matches that filter.';
+      empty.textContent = !shownColumns.size
+        ? 'No columns are turned on. Pick some above, or click All.'
+        : reviewTab === 'report' && !reviewData.report.length
+          ? 'No issues found.'
+          : 'Nothing matches that filter.';
       scroll.replaceChildren(empty);
     }
     scroll.scrollTop = 0;

@@ -20,12 +20,14 @@ export class ResultsPage {
   readonly keepNote: Locator;
   readonly copyLink: Locator;
   readonly deleteButton: Locator;
+  readonly allColumnsToggle: Locator;
 
   constructor(readonly page: Page) {
     this.title = page.locator('#results-title');
     this.keepNote = page.locator('#job-note');
     this.copyLink = page.getByRole('button', { name: 'Copy link' });
     this.deleteButton = page.locator('#delete-job-btn');
+    this.allColumnsToggle = page.locator('#toggle-all-columns');
     this.status = page.locator('#status-badge');
     this.headline = page.locator('#summary-headline');
     this.log = page.locator('#log-body');
@@ -40,6 +42,11 @@ export class ResultsPage {
     this.correctedCells = this.table.locator('td.cell-changed');
     this.downloadCsv = page.getByRole('link', { name: 'Download Output CSV' });
     this.downloadReport = page.getByRole('link', { name: 'Download Error Report' });
+  }
+
+  /** The review's on/off button for one column of the file. */
+  columnToggle(column: string): Locator {
+    return this.page.locator(`.column-toggle[data-column="${column}"]`);
   }
 
   async expectFinished() {
