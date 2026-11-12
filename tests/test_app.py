@@ -221,3 +221,11 @@ def test_a_failed_run_ends_with_a_plain_error_event(client, monkeypatch):
     assert "overloaded" in last["message"]
     assert job["status"] == "error"
     assert job["error"] == last["message"]
+
+
+@pytest.mark.parametrize("path, heading", [("/privacy", "<h1>Privacy</h1>"), ("/terms", "<h1>Terms of use</h1>")])
+def test_the_privacy_and_terms_pages_are_served(client, path, heading):
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert heading in response.text

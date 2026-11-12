@@ -42,6 +42,21 @@ async function deleteAccount() {
   else alert('Your account could not be deleted. Please try again.');
 }
 
+// Privacy and terms links at the foot of every page: in the page's own footer if it has one.
+function addLegalLinks() {
+  let footer = document.querySelector('footer');
+  if (!footer) {
+    footer = document.createElement('footer');
+    footer.className = 'site-footer';
+    document.body.append(footer);
+  }
+  const links = document.createElement('span');
+  links.className = 'legal-links';
+  links.append(navItem('a', { href: '/privacy' }, 'Privacy'), ' · ', navItem('a', { href: '/terms' }, 'Terms'));
+  footer.append(links);
+}
+addLegalLinks();
+
 window.accountReady.then(me => {
   const slot = document.getElementById('account-nav');
   if (!slot || !me) return;

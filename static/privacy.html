@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — Privacy</title>
+  <link rel="stylesheet" href="/static/account.css">
+  <link rel="stylesheet" href="/static/legal.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="/" class="nav-logo">SheetTriage</a>
+  <div class="nav-right">
+    <a href="/app" class="nav-back">Clean a file</a>
+    <span id="account-nav"></span>
+  </div>
+</nav>
+
+<main class="legal">
+  <h1>Privacy</h1>
+  <p class="updated">Last updated November 12, 2026</p>
+
+  <p>SheetTriage cleans CSV files. This page says what it keeps, for how long, who can see it, and how to delete it.</p>
+
+  <h2>What SheetTriage keeps</h2>
+  <ul>
+    <li><strong>Your file and its results.</strong> The CSV you upload, the cleaned file, the error report, and the progress of the run.</li>
+    <li><strong>Your account, if you sign in.</strong> Your email address and Google's ID for your account. SheetTriage never sees your Google password.</li>
+    <li><strong>A count of your runs.</strong> To limit free runs, each run records a scrambled form of the internet address it came from. The address itself isn't stored, and the scrambled form can't be turned back into it.</li>
+    <li><strong>Two cookies.</strong> One links your browser to the runs it made, and ends when you close the browser. The other keeps you signed in, for up to 30 days. There are no advertising or tracking cookies, and no analytics.</li>
+  </ul>
+
+  <h2>How long it's kept</h2>
+  <ul>
+    <li>Without signing in: 1 hour. Closing the browser also loses the way back to those results.</li>
+    <li>Signed in on the free plan: 7 days.</li>
+    <li>Signed in on a paid plan: 30 days.</li>
+  </ul>
+  <p>Files are deleted from the server when their time is up. There are no backups, so a deleted file is gone.</p>
+
+  <h2>Who can see it</h2>
+  <ul>
+    <li><strong>Only you.</strong> A run belongs to the account or browser that made it. Anyone else who opens its link is told it doesn't exist.</li>
+    <li><strong>Anthropic, to run the cleaning.</strong> SheetTriage uses Anthropic's Claude API. Claude is sent your column names, the first five rows, and the values that break your rules, not the whole file. If you write rules in plain English, Claude is also sent those rules and the first three rows. Anthropic's commercial terms don't allow it to train its models on this data.</li>
+    <li><strong>Railway, which hosts the site</strong> in the United States, stores the files on its servers.</li>
+    <li><strong>Google, if you sign in with Google,</strong> knows that you signed in to SheetTriage.</li>
+  </ul>
+  <p>SheetTriage doesn't sell or share your data with anyone else, and doesn't use it for anything except cleaning your file.</p>
+
+  <h2>Deleting your data</h2>
+  <ul>
+    <li><strong>One run:</strong> the Delete button on its results page, or in My files.</li>
+    <li><strong>Everything:</strong> Delete my account, in the menu under your email. It removes your account, every run and every file at once.</li>
+  </ul>
+
+  <h2>Please don't upload</h2>
+  <p>Card numbers, government ID numbers, health records, passwords, or other sensitive personal data. SheetTriage is built for everyday business data such as orders, registrations and contact lists.</p>
+
+  <h2>Questions</h2>
+  <p>Open an issue on <a href="https://github.com/rajeev-thundiyil15/SheetTriage/issues">SheetTriage's GitHub page</a>. If this page changes, the date at the top changes too.</p>
+</main>
+
+<script src="/static/account.js"></script>
+</body>
+</html>

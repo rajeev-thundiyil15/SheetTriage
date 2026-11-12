@@ -268,6 +268,16 @@ async def files_page():
     return FileResponse("static/files.html")
 
 
+@app.get("/privacy")
+async def privacy_page():
+    return FileResponse("static/privacy.html")
+
+
+@app.get("/terms")
+async def terms_page():
+    return FileResponse("static/terms.html")
+
+
 @app.get("/sign-in")
 async def sign_in_page():
     if not auth.accounts_enabled():
