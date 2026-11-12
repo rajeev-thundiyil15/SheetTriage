@@ -228,3 +228,30 @@ def test_the_privacy_and_terms_pages_are_served(client, path, heading):
 
     assert response.status_code == 200
     assert heading in response.text
+
+
+@pytest.mark.parametrize("variable", ["RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID"])
+def test_the_demo_is_off_on_railway(monkeypatch, variable):
+    import importlib
+    for name in web.RAILWAY_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DEMO_DATA", raising=False)
+    monkeypatch.setenv(variable, "production")
+    try:
+        assert importlib.reload(web).DEMO_DATA is False
+        monkeypatch.setenv("DEMO_DATA", "on")
+        assert importlib.reload(web).DEMO_DATA is True
+    finally:
+        monkeypatch.undo()
+        importlib.reload(web)
+
+
+def test_the_demo_is_on_locally(monkeypatch):
+    import importlib
+    for name in web.RAILWAY_VARIABLES + ("DEMO_DATA",):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        assert importlib.reload(web).DEMO_DATA is True
+    finally:
+        monkeypatch.undo()
+        importlib.reload(web)

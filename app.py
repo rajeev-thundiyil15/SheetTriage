@@ -58,9 +58,11 @@ MAX_ANONYMOUS_UPLOADS = int(os.getenv("MAX_ANONYMOUS_UPLOADS", "200"))
 
 DEMO_FILE = Path("static/demo/event_registrations.csv")
 
-# The Try demo data button is for local work and the browser tests. It's off on Railway
-# (which sets RAILWAY_ENVIRONMENT) unless DEMO_DATA=on says otherwise.
-DEMO_DATA = os.getenv("DEMO_DATA", "off" if os.getenv("RAILWAY_ENVIRONMENT") else "on").lower() == "on"
+# The Try demo data button is for local work and the browser tests. It's off on Railway,
+# which sets these variables on every deploy, unless DEMO_DATA=on says otherwise.
+RAILWAY_VARIABLES = ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID")
+ON_RAILWAY = any(os.getenv(name) for name in RAILWAY_VARIABLES)
+DEMO_DATA = os.getenv("DEMO_DATA", "off" if ON_RAILWAY else "on").lower() == "on"
 
 store = Store()
 
