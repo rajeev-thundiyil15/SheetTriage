@@ -403,6 +403,12 @@
   function appendLog(msg) {
     const el = document.createElement('div');
     switch (msg.type) {
+      case 'queued':
+        el.className = 'log-warn';
+        el.textContent = msg.ahead === 1
+          ? 'Waiting for another run to finish. Yours starts next.'
+          : `Waiting for other runs to finish. ${msg.ahead} are ahead of yours.`;
+        break;
       case 'start':
         el.className = 'log-info';
         el.textContent = '─── agent started ───────────────────';

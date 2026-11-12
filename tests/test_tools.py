@@ -552,3 +552,20 @@ def test_report_for_a_clean_file(tmp_path):
     save(tmp_path)
 
     assert (tmp_path / "report.csv").read_text(encoding="utf-8").strip() == "No errors found."
+
+
+def test_each_thread_has_its_own_run_state():
+    import threading
+    t.set_dataframe(pd.DataFrame({"a": [1]}))
+    seen = {}
+
+    def other_run():
+        seen["df"] = t.get_dataframe()
+        t.set_dataframe(pd.DataFrame({"a": [1, 2, 3]}))
+
+    worker = threading.Thread(target=other_run)
+    worker.start()
+    worker.join()
+
+    assert seen["df"] is None
+    assert len(t.get_dataframe()) == 1

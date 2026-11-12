@@ -11,6 +11,8 @@ from __future__ import annotations
 import csv
 import re
 import json
+import threading
+from collections.abc import MutableMapping
 import pandas as pd
 from collections import Counter
 from difflib import SequenceMatcher
@@ -23,11 +25,50 @@ from schema import DataSchema
 NUMERIC_DATE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})(?:\s.*)?$")
 YEAR_FIRST_DATE = re.compile(r"^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[ T].*)?$")
 
-_state: dict[str, Any] = {
-    "df": None,
-    "error_log": [],        # [{row_index, id_value, column, original_value, error}]
-    "validated_clean": set(),  # columns confirmed 0 violations as of their last validate_column call
-}
+def _fresh_state() -> dict[str, Any]:
+    return {
+        "df": None,
+        "error_log": [],        # [{row_index, id_value, column, original_value, error}]
+        "validated_clean": set(),  # columns confirmed 0 violations as of their last validate_column call
+    }
+
+
+class _RunState(MutableMapping):
+    """The working state of one run: its DataFrame, error log and checked columns.
+
+    Each run happens on its own thread, and each thread sees its own copy, so two runs at
+    once never touch each other's data. The tools use it like the plain dict it used to be."""
+
+    def __init__(self) -> None:
+        self._local = threading.local()
+
+    def _current(self) -> dict[str, Any]:
+        if not hasattr(self._local, "state"):
+            self._local.state = _fresh_state()
+        return self._local.state
+
+    def __getitem__(self, key: str) -> Any:
+        return self._current()[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._current()[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._current()[key]
+
+    def __iter__(self):
+        return iter(self._current())
+
+    def __len__(self) -> int:
+        return len(self._current())
+
+
+_state = _RunState()
+
+
+def reset_state() -> None:
+    """Forgets this thread's run: its DataFrame, error log and checked columns."""
+    _state._local.state = _fresh_state()
 
 
 def set_dataframe(df: pd.DataFrame) -> None:

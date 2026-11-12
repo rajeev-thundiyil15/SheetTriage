@@ -178,7 +178,8 @@
   }
 
   function resultChip(job) {
-    if (job.status === 'running' || job.status === 'queued') return el('span', { className: 'chip running' }, 'Running');
+    if (job.status === 'queued') return el('span', { className: 'chip running' }, 'Waiting');
+    if (job.status === 'running') return el('span', { className: 'chip running' }, 'Running');
     if (job.status === 'error') return el('span', { className: 'chip stopped' }, 'Stopped');
     if (job.status === 'interrupted') return el('span', { className: 'chip stopped' }, 'Cut short');
     if (job.flagged_rows === null) return el('span', { className: 'chip' }, 'Finished');

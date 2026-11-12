@@ -10,6 +10,7 @@ import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,9 +64,14 @@ DEMO_DATA = os.getenv("DEMO_DATA", "off" if os.getenv("RAILWAY_ENVIRONMENT") els
 
 store = Store()
 
-# Tool state is shared by the whole process (tools._state), so only one run at a time.
+# Runs happen side by side on a small pool of threads; each thread has its own tool state
+# (tools._state). Past that, a few more wait their turn, and the rest are asked to try later.
+MAX_RUNS_AT_ONCE = int(os.getenv("MAX_RUNS_AT_ONCE", "2"))
+MAX_WAITING_RUNS = int(os.getenv("MAX_WAITING_RUNS", "4"))
+_runs = ThreadPoolExecutor(max_workers=MAX_RUNS_AT_ONCE, thread_name_prefix="run")
 _job_lock = threading.Lock()
-_active_job: str | None = None
+
+BUSY_MESSAGE = "SheetTriage is busy with other people's files right now. Please try again in a few minutes."
 
 NOT_FOUND_UPLOAD = "That upload has expired. Please upload your CSV again."
 NOT_FOUND_JOB = "Job not found"
@@ -421,14 +427,7 @@ async def clean(
     schema_json: str = Form(...),
     mode: str = Form(default="clean"),
 ):
-    global _active_job
-
     store.delete_expired()
-
-    with _job_lock:
-        active = store.get_job(_active_job, None) if _active_job else None
-        if active and active["status"] in UNFINISHED:
-            raise HTTPException(409, "A job is already running — please wait for it to finish.")
 
     try:
         schema = DataSchema.model_validate(json.loads(schema_json))
@@ -444,13 +443,18 @@ async def clean(
     contents = store.upload_contents(upload["id"])
     df = _read_csv(contents)
 
-    job = store.add_job(_owner(request), upload, mode, schema.model_dump(),
-                        keep_seconds=_keep_seconds(user, upload["demo"]), client=auth.client_key(request))
+    # Counting and adding happen under one lock, so two requests can't both take the last place.
+    with _job_lock:
+        running = store.count_jobs("running")
+        waiting = store.count_jobs("queued")
+        if running + waiting >= MAX_RUNS_AT_ONCE + MAX_WAITING_RUNS:
+            raise HTTPException(409, BUSY_MESSAGE)
+        job = store.add_job(_owner(request), upload, mode, schema.model_dump(),
+                            keep_seconds=_keep_seconds(user, upload["demo"]), client=auth.client_key(request))
     job_id = job["id"]
     output_path = store.output_path(job_id)
-
-    with _job_lock:
-        _active_job = job_id
+    if running + waiting >= MAX_RUNS_AT_ONCE:
+        store.add_event(job_id, {"type": "queued", "ahead": running + waiting - MAX_RUNS_AT_ONCE + 1})
 
     # The run keeps the store it started with, even if the module's is swapped (as tests do).
     job_store = store
@@ -464,6 +468,7 @@ async def clean(
 
     def run():
         try:
+            job_store.update_job(job_id, status="running")
             run_agent(df, schema, output_path=str(output_path), mode=mode, on_log=on_log)
             flagged = None
             if output_path.exists():
@@ -481,7 +486,13 @@ async def clean(
             job_store.finish_job(job_id, {"type": "error", "message": message},
                                  status="error", error=message, finished_at=time.time())
 
-    threading.Thread(target=run, daemon=True).start()
+    def run_then_tidy():
+        try:
+            run()
+        finally:
+            tools.reset_state()  # the pool reuses threads; don't keep this run's data around
+
+    _runs.submit(run_then_tidy)
     return {"job_id": job_id}
 
 

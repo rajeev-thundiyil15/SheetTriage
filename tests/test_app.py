@@ -14,7 +14,6 @@ CSV = b"id,signed\n1,03/04/2024\n2,05/06/2024\n"
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(web, "store", Store(tmp_path))
-    monkeypatch.setattr(web, "_active_job", None)
     monkeypatch.setattr(auth, "AUTH_MODE", "off")
     return TestClient(web.app)
 

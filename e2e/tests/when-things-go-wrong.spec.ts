@@ -28,11 +28,11 @@ test('a run that fails partway explains why and offers no download', async ({ up
   await expect(resultsPage.reviewPanel).toBeHidden();
 });
 
-test('starting a second run while one is going says to wait', async ({ browser }) => {
+test('two people can run files at the same time', async ({ browser }) => {
   const firstTab = await browser.newPage();
   const secondTab = await browser.newPage();
   const first = { upload: new UploadPage(firstTab), schema: new SchemaPage(firstTab), results: new ResultsPage(firstTab) };
-  const second = { upload: new UploadPage(secondTab), schema: new SchemaPage(secondTab) };
+  const second = { upload: new UploadPage(secondTab), schema: new SchemaPage(secondTab), results: new ResultsPage(secondTab) };
 
   await test.step('start a slow run in one tab', async () => {
     await first.upload.upload('slow-run.csv');
@@ -41,24 +41,18 @@ test('starting a second run while one is going says to wait', async ({ browser }
     await expect(first.results.status).toHaveText('running');
   });
 
-  await test.step('try to start another run in a second tab', async () => {
+  await test.step('start another run in a second tab while the first is going', async () => {
     await second.upload.upload('orders.csv');
     await second.schema.expectLoaded();
-    // alert() blocks the page until it's answered, so answer it as it opens; waiting
-    // for the click to finish first would wait forever.
-    const alertText = new Promise<string>(resolve => {
-      secondTab.once('dialog', async dialog => {
-        resolve(dialog.message());
-        await dialog.accept();
-      });
-    });
     await second.schema.runAgent();
-    expect(await alertText).toContain('A job is already running — please wait for it to finish.');
-    await expect(second.schema.runButton).toBeEnabled();
+    await second.results.expectFinished();
+    await expect(second.results.headline).toContainText('of 10 rows are clean.');
   });
 
-  await test.step('the first run still finishes', async () => {
+  await test.step('the first run was still going, and finishes with its own results', async () => {
+    await expect(first.results.status).toHaveText('running');
     await expect(first.results.status).toHaveText('done', { timeout: 20_000 });
+    await expect(first.results.title).toHaveText('slow-run.csv');
   });
 });
 

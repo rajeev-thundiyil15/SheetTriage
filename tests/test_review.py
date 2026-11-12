@@ -109,7 +109,6 @@ def test_report_is_sorted_by_row(tmp_path):
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(web, "store", Store(tmp_path / "store"))
-    monkeypatch.setattr(web, "_active_job", None)
     monkeypatch.setattr(auth, "AUTH_MODE", "off")
     return TestClient(web.app)
 

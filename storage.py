@@ -201,11 +201,14 @@ class Store:
         now = time.time()
         self._query(
             "INSERT INTO jobs (id, owner, upload_id, filename, rows, mode, schema, demo, client, status, "
-            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)",
+            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
             (job_id, owner, upload["id"], upload["filename"], upload["rows"], mode, json.dumps(schema),
              int(upload["demo"]), client, now, now + keep_seconds),
         )
         return self.get_job(job_id, owner)
+
+    def count_jobs(self, status: str) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM jobs WHERE status = ?", (status,))[0]["n"]
 
     def get_job(self, job_id: str, owner: str | None) -> dict | None:
         """owner=None is for the server's own use (the run thread), never for a request."""

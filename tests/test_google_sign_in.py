@@ -18,7 +18,6 @@ def payload(**overrides):
 @pytest.fixture
 def google(monkeypatch, tmp_path):
     monkeypatch.setattr(web, "store", Store(tmp_path))
-    monkeypatch.setattr(web, "_active_job", None)
     monkeypatch.setattr(auth, "AUTH_MODE", "google")
     monkeypatch.setattr(auth, "GOOGLE_CLIENT_ID", CLIENT_ID)
     tokens = {"good-token": payload()}

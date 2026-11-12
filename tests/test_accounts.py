@@ -1,4 +1,5 @@
 """Saved jobs, who can open them, accounts, run limits and deleting. No API calls."""
+import threading
 import time
 
 import pandas as pd
@@ -26,7 +27,6 @@ def scripted_agent(df, schema, output_path, mode, on_log):
 def store(monkeypatch, tmp_path):
     s = Store(tmp_path)
     monkeypatch.setattr(web, "store", s)
-    monkeypatch.setattr(web, "_active_job", None)
     monkeypatch.setattr(web, "run_agent", scripted_agent)
     monkeypatch.setattr(auth, "AUTH_MODE", "off")
     return s
@@ -395,3 +395,60 @@ def test_a_database_from_before_the_new_columns_is_upgraded(tmp_path):
 
     columns = {row[1] for row in upgraded._db.execute("PRAGMA table_info(jobs)")}
     assert {"client", "model", "steps", "cache_write_tokens", "cache_read_tokens"} <= columns
+
+
+# ── More than one run at a time ──
+
+def test_two_runs_at_once_keep_their_own_data(store, monkeypatch):
+    both_running = threading.Barrier(2, timeout=5)
+
+    def agent_that_waits_for_the_other(df, schema, output_path, mode, on_log):
+        tools.set_dataframe(df)
+        both_running.wait()  # both runs are now inside the tools at the same moment
+        bad_row = 0 if len(df) == 2 else 2
+        tools._state["error_log"].append(
+            {"row_index": bad_row, "row_id": str(bad_row + 1), "column": "pay", "original_value": "x", "error": "bad pay"})
+        both_running.wait()
+        df.assign(_errors="").to_csv(output_path, index=False)
+    monkeypatch.setattr(web, "run_agent", agent_that_waits_for_the_other)
+    small, large = browser(), browser()
+    small_upload = upload(small).json()["upload_id"]
+    large_upload = upload(large, b"id,pay\n1,1\n2,2\n3,3\n4,4\n").json()["upload_id"]
+
+    first = small.post("/clean", data={"upload_id": small_upload, "schema_json": SCHEMA}).json()["job_id"]
+    second = large.post("/clean", data={"upload_id": large_upload, "schema_json": SCHEMA}).json()["job_id"]
+    wait_for_runs()
+
+    assert store.get_job(first, None)["status"] == "done"
+    assert store.get_job(second, None)["status"] == "done"
+    # Report rows count the way a spreadsheet does: the header is row 1.
+    assert [r["row"] for r in store.load_review(first)["report"]] == [2]
+    assert [r["row"] for r in store.load_review(second)["report"]] == [4]
+
+
+def test_runs_past_the_limit_wait_and_then_people_are_asked_to_try_later(store, monkeypatch):
+    monkeypatch.setattr(web, "MAX_WAITING_RUNS", 1)
+    release = threading.Event()
+
+    def slow_agent(df, schema, output_path, mode, on_log):
+        release.wait(5)
+        scripted_agent(df, schema, output_path, mode, on_log)
+    monkeypatch.setattr(web, "run_agent", slow_agent)
+    client = browser()
+
+    def start():
+        return client.post("/clean", data={"upload_id": upload(client).json()["upload_id"], "schema_json": SCHEMA})
+
+    try:
+        started = [start().json()["job_id"] for _ in range(web.MAX_RUNS_AT_ONCE)]
+        waiting = start().json()["job_id"]
+        refused = start()
+
+        assert store.get_job(waiting, None)["status"] == "queued"
+        assert store.events(waiting) == [(1, {"type": "queued", "ahead": 1})]
+        assert refused.status_code == 409
+        assert "busy" in refused.json()["detail"]
+    finally:
+        release.set()
+    wait_for_runs()
+    assert all(store.get_job(j, None)["status"] == "done" for j in started + [waiting])

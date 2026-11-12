@@ -17,7 +17,7 @@ const server = (port: number, authMode: string) => ({
 });
 
 export default defineConfig({
-  // The app runs one cleaning job at a time, so tests can't run side by side.
+  // Tests share the two test servers (and their run limits and saved files), so they run one at a time.
   workers: 1,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
