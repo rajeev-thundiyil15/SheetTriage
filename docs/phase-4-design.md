@@ -2,28 +2,39 @@
 
 Phase 4 turns the demo into something people can pay for, while keeping it cheap to run and keeping each person's data private. It runs Nov 11–20 in two parts:
 
-1. **Saved jobs and accounts** (Nov 11–17): sign-in, results that survive restarts and belong to one account, a free tier with a monthly run limit, and more than one run at a time.
+1. **Saved jobs and accounts** (Nov 11–17): optional sign-in, results that survive restarts and belong to one owner, a daily run limit, and more than one run at a time.
 2. **Billing** (Nov 18–20): Stripe Checkout, a webhook that changes the account's plan, and the customer portal.
 
-Saved jobs and accounts ship together. Saved results are never reachable by link alone: until sign-in is live, the live site keeps today's behaviour (in memory, deleted after an hour), so nothing gets less private along the way.
+Saved jobs and accounts ship together. Saved results are never reachable by link alone: every run belongs to an account or to the browser that made it.
+
+## Status, Nov 12
+
+Part 1 is built and tested on `phase-1-reliability`, not yet on master or live. What changed from the first version of this plan:
+
+- **Sign-in is optional.** Anyone can clean a file without an account; results are kept for an hour in that browser. Signing in is only for keeping results.
+- **Sign in with Google instead of Clerk:** free, and no extra company to rely on. A test sign-in (`AUTH_MODE=dev`) is used locally and in the browser tests.
+- **The demo button is local only.** It's hidden on Railway.
+- **One daily limit for everyone not paying:** 3 runs a day, visitors counted by a scrambled address and free accounts by account. Paid plans get a monthly number.
+- **Two runs at once** by giving each run thread its own tool state, rather than passing a state object to every tool.
+
+Still to do in Part 1: one real Google sign-in, merging to master and checking the live site, and measuring a 30,000-row run's memory on Railway.
 
 ## Who can do what
 
 | | Without signing in | Free account | Paid account |
 |---|---|---|---|
-| Try the demo file | Yes | Yes | Yes |
-| Upload your own file | No, sign-in needed | Yes, with a monthly run limit | More runs and bigger files |
-| Results kept | Demo only, 1 hour | 7 days | 30 days |
+| Clean your own file | Yes, 3 runs a day | Yes, 3 runs a day | A monthly number of runs |
+| Results kept | 1 hour, in that browser | 7 days, in My files | 30 days |
 | Who can open the results | Only the browser that ran it | Only that account | Only that account |
 
-The demo stays one click with no sign-up, so a recruiter or a new visitor can still try it straight away. It only runs the bundled file, so its cost per run is small and known.
+The Try demo data button only appears when running locally. Visitors on the live site upload their own file, and a sample with planted problems is linked from the README.
 
 ## Security rules
 
 1. **Every job belongs to someone.** Each results, progress, review and download request checks that the job belongs to the signed-in user (or, for a demo run, to the browser's session cookie). Anything else gets "not found", the same as a job that doesn't exist, so a leaked or guessed link reveals nothing.
-2. **No passwords stored.** Sign-in is handled by Clerk. SheetTriage only checks the signed session token on each request.
+2. **No passwords stored.** Sign-in is handled by Google. SheetTriage checks Google's signed token once (signature, issuer, audience, expiry, verified email), then uses its own signed cookie.
 3. **No card details.** Stripe Checkout and the customer portal handle all payment details. The database holds an email and a Stripe customer ID, nothing more.
-4. **Spend is capped per account.** Uploads need sign-in, and each account has a monthly run count. The Anthropic key's monthly spending limit stays as a backstop.
+4. **Spend is capped per person.** 3 runs a day for visitors and free accounts. The Anthropic key's monthly spending limit stays as a backstop.
 5. **Keep as little as possible.**
    - Files are deleted automatically when their time is up.
    - A **Delete** button on the results page removes a job and its files at once.
@@ -63,7 +74,7 @@ SQLite through Python's built-in `sqlite3` module, so no new dependency.
 
 | Table | Columns | Replaces |
 |---|---|---|
-| `users` | `id` (Clerk user ID), `email`, `plan` (free, paid), `stripe_customer_id`, `created_at` | nothing yet |
+| `users` | `id` (`google_` plus Google's account ID), `email`, `plan` (free, paid), `stripe_customer_id`, `created_at` | nothing yet |
 | `uploads` | `id`, `owner`, `filename`, `rows`, `columns` (JSON), `path`, `created_at`, `expires_at` | `_uploads` |
 | `jobs` | `id`, `owner`, `upload_id`, `mode`, `schema` (JSON), `status` (queued, running, done, error, interrupted), `error`, `flagged_rows`, `input_tokens`, `output_tokens`, `created_at`, `finished_at`, `expires_at` | `_jobs` |
 | `job_events` | `job_id`, `seq`, `event` (JSON) | `_jobs[...]["events"]` |
@@ -72,13 +83,13 @@ SQLite through Python's built-in `sqlite3` module, so no new dependency.
 
 ### Sign-in
 
-Clerk's drop-in components on the plain HTML pages, with the session token checked by FastAPI on every request. Clerk's free tier covers a launch; check current pricing before signing up. A **My files** page lists the signed-in user's runs (file name, date, rows flagged, days left) on any device. The results page gets a **Copy link** button for the owner, which works only when they're signed in.
+Google's "Sign in with Google" button on the sign-in page (`AUTH_MODE=google`, `GOOGLE_CLIENT_ID`). The server checks Google's token at `/auth/google`, which only takes JSON from the site's own pages, and then signs a cookie with `SESSION_SECRET`. A **My files** page lists the signed-in user's runs (file name, date, rows flagged, days left) on any device. The results page gets a **Copy link** button for the owner, which works only when they're signed in.
 
 ### Limits
 
-- **Free:** today's upload caps (5 MB, 30,000 rows) or lower, plus a monthly run count from `jobs`. Numbers to be decided.
-- **Paid:** more runs and bigger files.
-- **Demo:** the bundled file only, no account needed.
+- **Visitors and free accounts:** 3 runs in any 24 hours (`FREE_RUNS_PER_DAY`), plus the upload caps (5 MB, 30,000 rows). Visitors are counted by a scrambled form of their address: the last `X-Forwarded-For` entry, which Railway's proxy adds.
+- **Paid:** `PAID_RUNS_PER_MONTH` (100 for now) and bigger files.
+- **Demo:** the bundled file doesn't count, and is only offered locally.
 
 ### Restarts
 
@@ -132,14 +143,14 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 | Railway Hobby plan | About $5 a month, including some usage |
 | Volume | A few cents a month at this size (well under 1 GB) |
 | SQLite | Free, part of Python |
-| Clerk | Free tier |
+| Google sign-in | Free |
 | Stripe | A fee per payment only |
 | Claude Haiku 4.5 | A few cents per run; Part 1 measures the real figure |
 
 ## Decisions
 
 1. ~~**Railway volume:** add one in the dashboard, mounted at `/data`.~~ Done Nov 10.
-2. **Sign-in provider:** Clerk (recommended).
-3. **Free tier numbers:** runs per month, and the largest free file (for example 5 runs a month, up to 5,000 rows).
+2. ~~**Sign-in provider.**~~ Google, decided Nov 10.
+3. **Free tier numbers:** 3 runs a day for now. The largest free file is still 30,000 rows.
 4. **Paid price.** First measure Claude cost per run (Part 1) and test Haiku 5.5, which is listed at about a tenth of Haiku 4.5's price.
 5. **Runs at once:** start at 2, and change it once a 30,000-row run's memory use on Railway is measured.

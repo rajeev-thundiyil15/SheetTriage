@@ -60,16 +60,20 @@ The schema page is plain Python (`schema_profile.py`). It turns a guess into a q
 
 Validation and fixing are deterministic pandas code. The model only decides which tool to call next, and Haiku 4.5 does that reliably at a fraction of the price of larger models. Measured costs are below.
 
-### 6. Small on purpose
+### 6. Private by default, cheap to run
 
-One job runs at a time, uploads are capped at 5 MB and 30,000 rows, and jobs live in memory for an hour. That keeps a free demo cheap and safe. Accounts, saved jobs and billing are the next phase.
+- **Every run belongs to someone.** Uploads, runs and results are saved in SQLite plus files on a Railway volume, each owned by a signed-in account or by the browser that made it. Every page, review and download checks the owner, and anyone else is told the run doesn't exist.
+- **Signing in is optional.** Without it, results are kept for an hour in that browser. Signing in with Google keeps them for 7 days in My files, on any device. SheetTriage never stores passwords.
+- **Runs are limited, so nobody can run up the bill.** Everyone not on a paid plan gets 3 runs a day: visitors are counted by a scrambled form of their address, and free accounts by account, so signing in never means fewer runs.
+- **Each run's cost is recorded.** The tokens of every Claude request go on the run's record, and `costs.py` reports what runs really cost by file size.
+- **Two runs at once.** Each run's working data is kept per thread, so runs side by side never touch each other's data. A few more wait their turn.
 
 ---
 
 ## Testing
 
-- **182 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages. None call the API.
-- **10 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema and results pages:
+- **235 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages, plus saved runs, who can open them, sign-in (including forged and expired Google tokens), run limits, deleting, and two runs at once. None call the API.
+- **18 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema, results and My files pages, and the account menu:
   - upload to review;
   - refreshing the results page;
   - the demo button from start to finish;
@@ -79,7 +83,9 @@ One job runs at a time, uploads are capped at 5 MB and 30,000 rows, and jobs liv
   - a file with a malformed row being refused;
   - a semicolon CSV from Excel;
   - a run that fails partway;
-  - a second run while one is going.
+  - two people running files at the same time;
+  - running out of free runs;
+  - and, on a second test server with sign-in turned on: a visitor cleaning a file without signing in, a signed-in run saved to My files, another account opening your link, runs moving to the account on sign-in, deleting a run, deleting an account, and My files at phone width.
 - **3 Cucumber scenarios** in plain English ([`e2e/features/`](e2e/features/clean-a-file.feature)), run by playwright-bdd with the same page objects: the demo from start to finish, a value that breaks a rule being flagged rather than changed, and an unreadable file being refused.
 - **GitHub Actions** runs all of these and a TypeScript check on every push, keeps the Playwright report and traces, and publishes the latest report from master to [GitHub Pages](https://rajeev-thundiyil15.github.io/SheetTriage/).
 - **Live accuracy runs** on the deployed site, using generated files with known planted problems:
@@ -130,6 +136,8 @@ uv run --no-project --with-requirements requirements.txt uvicorn app:app --reloa
 
 Open [http://localhost:8000/app](http://localhost:8000/app).
 
+To try accounts locally without Google, add `AUTH_MODE=dev` to `.env`: the sign-in page then takes any email with no password. `.env.example` lists the settings for Google sign-in.
+
 There's also a command-line version:
 
 ```bash
@@ -141,7 +149,10 @@ uv run --no-project --with-requirements requirements.txt python main.py data/tes
 ## Project structure
 
 ```
-├── app.py               # FastAPI routes: upload, schema draft, run, live stream, review, download
+├── app.py               # FastAPI routes: upload, schema draft, run, live stream, review, download, accounts
+├── storage.py           # SQLite and files on disk: uploads, runs, progress, accounts
+├── auth.py              # Who is asking: browser session, Google sign-in, the test sign-in
+├── costs.py             # What runs have really cost, from their recorded tokens
 ├── agent.py             # The agent loop: Claude tool use, mode prompts, plain-text log
 ├── tools.py             # pandas tools the agent calls, and the save check
 ├── csv_input.py         # Reads each upload once into standard UTF-8 CSV
@@ -150,7 +161,7 @@ uv run --no-project --with-requirements requirements.txt python main.py data/tes
 ├── review.py            # Lines the output up with the original for the review page
 ├── schema.py            # Pydantic schema models
 ├── main.py              # Command-line entry point
-├── static/              # Pages: home, upload, schema, results, plus the demo CSV
+├── static/              # Pages: home, upload, schema, results, My files, sign-in, privacy, terms, plus the demo CSV
 ├── schema/              # Example schemas (registrations matches the test data)
 ├── data/                # 40-row test file and its answer key
 ├── tests/               # pytest suite
@@ -177,9 +188,9 @@ Types: `int`, `float`, `str`, `date`. `date_format` is `MDY`, `DMY` or `YMD`, an
 
 ## Known limitations
 
-- Jobs are held in memory, so a restart or redeploy clears results, and finished files are deleted after an hour.
-- One run at a time. A second visitor is asked to wait.
-- No accounts yet, so anyone with the link can run the agent. The API key has a monthly spending limit.
+- Two runs at a time, with up to four more waiting. Memory use per run on Railway hasn't been measured yet.
+- A run that's going when the server restarts is cut short, and is offered again.
+- No paid plan yet: billing is the next phase.
 
 ## License
 
