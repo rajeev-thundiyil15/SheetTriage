@@ -9,7 +9,8 @@ const ACCOUNTS_PORT = 8011;
 const server = (port: number, authMode: string) => ({
   command: 'uv run --no-project --python 3.14 --with-requirements requirements.txt python e2e/fake_agent_server.py',
   cwd: '..',
-  env: { PORT: String(port), AUTH_MODE: authMode },
+  // Every test run comes from the same address, so the daily run limit is raised here.
+  env: { PORT: String(port), AUTH_MODE: authMode, FREE_RUNS_PER_DAY: '1000' },
   url: `http://127.0.0.1:${port}/app`,
   reuseExistingServer: !process.env.CI,
   timeout: 120_000,

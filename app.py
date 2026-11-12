@@ -43,11 +43,12 @@ MAX_UPLOAD_ROWS = int(os.getenv("MAX_UPLOAD_ROWS", "30000"))
 JOB_FILE_TTL_SECONDS = int(os.getenv("JOB_FILE_TTL_SECONDS", str(60 * 60)))
 KEEP_DAYS = {"free": 7, "paid": 30}
 
-# Runs a month, per plan. The demo file doesn't count.
-RUNS_PER_MONTH = {
-    "free": int(os.getenv("FREE_RUNS_PER_MONTH", "5")),
-    "paid": int(os.getenv("PAID_RUNS_PER_MONTH", "100")),
-}
+# Run limits, so nobody can run up the Claude bill. Everyone not on a paid plan gets the
+# same daily number: visitors are counted by their (scrambled) address, signed-in free
+# accounts by account, so signing in never means fewer runs. The demo file doesn't count.
+FREE_RUNS_PER_DAY = int(os.getenv("FREE_RUNS_PER_DAY", "3"))
+PAID_RUNS_PER_MONTH = int(os.getenv("PAID_RUNS_PER_MONTH", "100"))
+DAY = 24 * 60 * 60
 
 # Uploads kept per owner, and in total for browsers that haven't signed in, so the disk
 # can't be filled by one visitor.
@@ -97,18 +98,45 @@ def _keep_seconds(user: dict | None, demo: bool) -> float:
     return KEEP_DAYS.get(user["plan"], KEEP_DAYS["free"]) * 24 * 60 * 60
 
 
-def _month_start() -> float:
+def _month_start(months_ahead: int = 0) -> float:
     now = datetime.now(timezone.utc)
-    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
+    month = now.month - 1 + months_ahead
+    return now.replace(year=now.year + month // 12, month=month % 12 + 1, day=1,
+                       hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-def _usage(user: dict | None) -> dict:
-    if not user:
-        return {"runs_this_month": None, "run_limit": None}
-    return {
-        "runs_this_month": store.runs_since(user["id"], _month_start()),
-        "run_limit": RUNS_PER_MONTH.get(user["plan"], RUNS_PER_MONTH["free"]),
-    }
+def _usage(request: Request, user: dict | None) -> dict:
+    """How many runs this person has used, their limit, and when the next one frees up."""
+    if user and user["plan"] == "paid":
+        used = len(store.run_times(_month_start(), owner=user["id"]))
+        limit = PAID_RUNS_PER_MONTH
+        return {"runs_used": used, "run_limit": limit, "run_period": "month",
+                "next_run_at": _month_start(1) if used >= limit else None}
+    since = time.time() - DAY
+    if user:
+        times = store.run_times(since, owner=user["id"])
+    else:
+        times = store.run_times(since, client=auth.client_key(request))
+    # The window rolls: each run stops counting 24 hours after it started.
+    full = len(times) >= FREE_RUNS_PER_DAY
+    return {"runs_used": len(times), "run_limit": FREE_RUNS_PER_DAY, "run_period": "day",
+            "next_run_at": times[len(times) - FREE_RUNS_PER_DAY] + DAY if full else None}
+
+
+def _wait_text(seconds: float) -> str:
+    minutes = max(1, round(seconds / 60))
+    if minutes < 60:
+        return f"about {minutes} minute{'s' if minutes != 1 else ''}"
+    hours = round(minutes / 60)
+    return f"about {hours} hour{'s' if hours != 1 else ''}"
+
+
+def _limit_message(usage: dict) -> str:
+    if usage["run_period"] == "month":
+        return (f"You've used all {usage['run_limit']} runs on your plan this month. "
+                "They reset on the 1st.")
+    return (f"You've used your {usage['run_limit']} free runs for today. "
+            f"You can run another file in {_wait_text(usage['next_run_at'] - time.time())}.")
 
 
 # ── Helpers ──
@@ -263,7 +291,7 @@ async def me(request: Request):
         "keep_hours": _keep_seconds(user, demo=False) / 3600,
         "demo_keep_hours": JOB_FILE_TTL_SECONDS / 3600,
         "demo_data": DEMO_DATA,
-        **_usage(user),
+        **_usage(request, user),
     }
 
 
@@ -399,17 +427,15 @@ async def clean(
 
     upload = _get_upload(request, upload_id)
     user = _user(request)
-    usage = _usage(user)
-    if not upload["demo"] and usage["run_limit"] is not None and usage["runs_this_month"] >= usage["run_limit"]:
-        raise HTTPException(
-            429, f"You've used all {usage['run_limit']} runs on your plan this month. "
-                 "Runs reset on the 1st. The demo data still works.")
+    usage = _usage(request, user)
+    if not upload["demo"] and usage["runs_used"] >= usage["run_limit"]:
+        raise HTTPException(429, _limit_message(usage))
 
     contents = store.upload_contents(upload["id"])
     df = _read_csv(contents)
 
     job = store.add_job(_owner(request), upload, mode, schema.model_dump(),
-                        keep_seconds=_keep_seconds(user, upload["demo"]))
+                        keep_seconds=_keep_seconds(user, upload["demo"]), client=auth.client_key(request))
     job_id = job["id"]
     output_path = store.output_path(job_id)
 

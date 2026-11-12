@@ -9,8 +9,9 @@ test('a visitor can clean a file without signing in, kept for an hour', async ({
   await test.step('the upload page works as normal and offers sign-in to save results', async () => {
     await uploadPage.goto();
     await expect(uploadPage.fileInput).toBeAttached();
-    await expect(uploadPage.keepNote).toHaveText(
+    await expect(uploadPage.keepNote).toContainText(
       'Results are kept for 1 hour in this browser. Sign in to save them to My files for 7 days instead.');
+    await expect(uploadPage.page.locator('#runs-left')).toHaveText(/^\d+ of 1000 free runs left today\.$/);
     await expect(account.signInLink).toBeVisible();
   });
 
@@ -35,7 +36,7 @@ test('a visitor can clean a file without signing in, kept for an hour', async ({
 
 test('a signed-in user\'s run is saved to My files', async ({ page, uploadPage, schemaPage, resultsPage, filesPage, account }) => {
   await account.signIn(newEmail(), '/app');
-  await expect(uploadPage.keepNote).toHaveText('Results are saved to My files for 7 days. 5 of 5 runs left this month.');
+  await expect(uploadPage.keepNote).toHaveText('Results are saved to My files for 7 days.1000 of 1000 free runs left today.');
 
   await test.step('run a file', async () => {
     await uploadPage.chooseFile('orders.csv');
@@ -53,7 +54,7 @@ test('a signed-in user\'s run is saved to My files', async ({ page, uploadPage, 
     await expect(filesPage.jobs).toHaveCount(1);
     await expect(filesPage.job('orders.csv')).toContainText('1 row flagged');
     await expect(filesPage.job('orders.csv')).toContainText('Kept until');
-    await expect(filesPage.runsThisMonth).toHaveText('1 of 5');
+    await expect(filesPage.runsUsed).toHaveText('1 of 1000');
   });
 
   await test.step('opening it brings back the review', async () => {

@@ -10,6 +10,23 @@ function keptFor(hours) {
   return hours === 1 ? '1 hour' : `${hours} hours`;
 }
 
+// "2 of 3 free runs left today." or, once they're used, when the next one frees up.
+function runsLeftText(me) {
+  const left = Math.max(0, me.run_limit - me.runs_used);
+  const period = me.run_period === 'month' ? 'this month' : 'today';
+  const kind = me.run_period === 'month' ? 'runs' : 'free runs';
+  if (left > 0) return `${left} of ${me.run_limit} ${kind} left ${period}.`;
+  if (me.run_period === 'month') return `You've used all ${me.run_limit} runs this month. They reset on the 1st.`;
+  return `You've used today's ${me.run_limit} free runs. You can run another file ${waitText(me.next_run_at)}.`;
+}
+
+function waitText(atSeconds) {
+  const minutes = Math.max(1, Math.round((atSeconds * 1000 - Date.now()) / 60000));
+  if (minutes < 60) return `in about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `in about ${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
 function navItem(tag, props, text) {
   const node = document.createElement(tag);
   Object.assign(node, props);
@@ -46,7 +63,7 @@ window.accountReady.then(me => {
     const panel = document.createElement('div');
     panel.className = 'account-menu-panel';
     const plan = me.plan === 'paid' ? 'Paid plan' : 'Free plan';
-    const usage = me.run_limit != null ? ` · ${me.runs_this_month} of ${me.run_limit} runs used this month` : '';
+    const usage = ` · ${me.runs_used} of ${me.run_limit} runs used ${me.run_period === 'month' ? 'this month' : 'today'}`;
     panel.append(navItem('div', { className: 'menu-note' }, plan + usage));
 
     const signOut = document.createElement('form');

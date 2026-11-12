@@ -619,11 +619,14 @@
       link.textContent = 'Sign in';
       note.append(link, ` to save them to My files for 7 days instead.`);
     } else if (me.accounts) {
-      const left = Math.max(0, me.run_limit - me.runs_this_month);
-      note.textContent = `Results are saved to My files for ${keptFor(me.keep_hours)}. ${left} of ${me.run_limit} runs left this month.`;
+      note.textContent = `Results are saved to My files for ${keptFor(me.keep_hours)}.`;
     } else {
       note.textContent = `Results are kept for ${keptFor(me.keep_hours)}, and only this browser can open them.`;
     }
+    const runs = document.createElement('span');
+    runs.id = 'runs-left';
+    runs.textContent = runsLeftText(me);
+    note.append(document.createElement('br'), runs);
   });
 
   async function continueToSchema() {

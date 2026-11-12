@@ -44,6 +44,16 @@ if not _SECRET:
     _SECRET = secrets.token_hex(32).encode()
 
 
+def client_key(request: Request) -> str:
+    """A scrambled form of the visitor's address, for counting their runs.
+
+    The address itself is never stored. Behind Railway's proxy it's the last entry in
+    X-Forwarded-For, which the proxy adds, so a visitor can't pick it."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    address = forwarded.split(",")[-1].strip() if forwarded else (request.client.host if request.client else "")
+    return hmac.new(_SECRET, b"client:" + address.encode(), hashlib.sha256).hexdigest()[:32]
+
+
 def accounts_enabled() -> bool:
     return AUTH_MODE != "off"
 

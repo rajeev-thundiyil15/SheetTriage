@@ -165,7 +165,7 @@ def test_signing_in_is_optional_and_runs_without_it_are_kept_an_hour(accounts):
     job = web.store.get_job(job_id, None)
     assert job["owner"].startswith("session:")
     assert job["expires_at"] - job["created_at"] == pytest.approx(web.JOB_FILE_TTL_SECONDS, abs=5)
-    assert client.get("/me").json()["run_limit"] is None
+    assert client.get("/me").json()["run_period"] == "day"
 
 
 def test_the_browser_session_ends_when_the_browser_closes(accounts):
@@ -233,18 +233,92 @@ def test_account_runs_are_kept_for_seven_days(accounts):
     assert client.get("/me").json()["keep_hours"] == 7 * 24
 
 
-def test_the_monthly_run_limit_is_enforced_but_the_demo_is_free(accounts, monkeypatch):
-    monkeypatch.setitem(web.RUNS_PER_MONTH, "free", 2)
+def refused_run(client, **kwargs):
+    upload_id = client.post("/upload", files={"csv_file": ("pay.csv", CSV, "text/csv")}, **kwargs).json()["upload_id"]
+    return client.post("/clean", data={"upload_id": upload_id, "schema_json": SCHEMA}, **kwargs)
+
+
+def test_a_free_account_gets_a_daily_limit_but_the_demo_is_free(accounts, monkeypatch):
+    monkeypatch.setattr(web, "FREE_RUNS_PER_DAY", 2)
     client = sign_in(browser())
     run(client)
     run(client)
 
-    refused = client.post("/clean", data={"upload_id": upload(client).json()["upload_id"], "schema_json": SCHEMA})
+    refused = refused_run(client)
 
     assert refused.status_code == 429
-    assert "all 2 runs" in refused.json()["detail"]
-    assert client.get("/me").json()["runs_this_month"] == 2
+    assert "your 2 free runs for today" in refused.json()["detail"]
+    assert "about 24 hours" in refused.json()["detail"]
+    me = client.get("/me").json()
+    assert (me["runs_used"], me["run_limit"], me["run_period"]) == (2, 2, "day")
     run(client, client.post("/upload-demo").json()["upload_id"])
+
+
+def test_visitors_are_limited_by_address_not_by_browser(store, monkeypatch):
+    monkeypatch.setattr(web, "FREE_RUNS_PER_DAY", 1)
+    run(browser())
+
+    same_place = refused_run(browser())
+    somewhere_else = refused_run(browser(), headers={"X-Forwarded-For": "203.0.113.9"})
+
+    assert same_place.status_code == 429
+    assert somewhere_else.status_code == 200
+
+
+def test_a_visitor_cannot_dodge_the_limit_by_faking_the_forwarded_address(store, monkeypatch):
+    monkeypatch.setattr(web, "FREE_RUNS_PER_DAY", 1)
+    proxy_says = "198.51.100.7"
+    run_from = {"headers": {"X-Forwarded-For": proxy_says}}
+    client = browser()
+    upload_id = client.post("/upload", files={"csv_file": ("pay.csv", CSV, "text/csv")}, **run_from).json()["upload_id"]
+    client.post("/clean", data={"upload_id": upload_id, "schema_json": SCHEMA}, **run_from)
+    wait_for_runs()
+
+    faked = refused_run(browser(), headers={"X-Forwarded-For": f"10.0.0.1, {proxy_says}"})
+
+    assert faked.status_code == 429
+
+
+def test_signing_in_gives_the_account_its_own_count(accounts, monkeypatch):
+    monkeypatch.setattr(web, "FREE_RUNS_PER_DAY", 1)
+    run(browser())
+
+    account = sign_in(browser())
+
+    assert account.get("/me").json()["runs_used"] == 0
+    run(account)
+
+
+def test_a_run_stops_counting_a_day_after_it_started(store, monkeypatch):
+    monkeypatch.setattr(web, "FREE_RUNS_PER_DAY", 1)
+    client = browser()
+    run(client)
+    assert refused_run(client).status_code == 429
+
+    tomorrow = time.time() + web.DAY + 1
+    monkeypatch.setattr(time, "time", lambda: tomorrow)
+
+    assert client.get("/me").json()["runs_used"] == 0
+
+
+def test_a_paid_account_gets_a_monthly_limit(accounts, monkeypatch):
+    monkeypatch.setattr(web, "PAID_RUNS_PER_MONTH", 1)
+    client = sign_in(browser())
+    web.store._query("UPDATE users SET plan = 'paid'")
+    run(client)
+
+    refused = refused_run(client)
+
+    assert refused.status_code == 429
+    assert "all 1 runs on your plan this month" in refused.json()["detail"]
+    assert client.get("/me").json()["run_period"] == "month"
+
+
+def wait_for_runs():
+    for _ in range(200):
+        if not any(j["status"] in UNFINISHED for j in web.store._query("SELECT status FROM jobs")):
+            return
+        time.sleep(0.01)
 
 
 def test_deleting_an_account_removes_everything_it_had(accounts):

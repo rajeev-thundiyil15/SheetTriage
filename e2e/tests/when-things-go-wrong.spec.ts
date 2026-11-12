@@ -61,3 +61,19 @@ test('starting a second run while one is going says to wait', async ({ browser }
     await expect(first.results.status).toHaveText('done', { timeout: 20_000 });
   });
 });
+
+test('running out of free runs explains when the next one frees up', async ({ page, uploadPage, schemaPage }) => {
+  const message = "You've used your 3 free runs for today. You can run another file in about 5 hours.";
+  await page.route('**/clean', route => route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ detail: message }) }));
+  const dialogs: string[] = [];
+  page.on('dialog', dialog => { dialogs.push(dialog.message()); dialog.dismiss(); });
+
+  await uploadPage.upload('orders.csv');
+  await schemaPage.expectLoaded();
+  await schemaPage.runAgent();
+
+  await expect(page.locator('#limit-note')).toHaveText(message);
+  await expect(page).toHaveURL(/\/schema\?upload=/);
+  await expect(schemaPage.runButton).toBeEnabled();
+  expect(dialogs).toEqual([]);
+});

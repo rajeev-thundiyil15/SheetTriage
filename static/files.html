@@ -136,7 +136,7 @@
 
   <div class="stats" id="stats" style="display:none">
     <div class="stat">
-      <div class="stat-label">Runs this month</div>
+      <div class="stat-label" id="stat-runs-label">Runs today</div>
       <div class="stat-value" id="stat-runs"></div>
       <div class="meter"><span id="stat-meter"></span></div>
     </div>
@@ -237,8 +237,9 @@
     if (me && me.accounts && me.signed_in) {
       sub.textContent = `Your saved runs. Results are kept for ${keptFor(me.keep_hours)}, and only you can open them.`;
       document.getElementById('stats').style.display = 'grid';
-      document.getElementById('stat-runs').textContent = `${me.runs_this_month} of ${me.run_limit}`;
-      document.getElementById('stat-meter').style.width = `${Math.min(100, 100 * me.runs_this_month / Math.max(1, me.run_limit))}%`;
+      document.getElementById('stat-runs-label').textContent = me.run_period === 'month' ? 'Runs this month' : 'Runs today';
+      document.getElementById('stat-runs').textContent = `${me.runs_used} of ${me.run_limit}`;
+      document.getElementById('stat-meter').style.width = `${Math.min(100, 100 * me.runs_used / Math.max(1, me.run_limit))}%`;
       document.getElementById('stat-plan').textContent = me.plan === 'paid' ? 'Paid' : 'Free';
       document.getElementById('stat-plan-note').textContent = `results kept ${keptFor(me.keep_hours)}`;
       document.getElementById('stat-flagged').textContent = '0';

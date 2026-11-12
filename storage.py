@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     mode TEXT NOT NULL,
     schema TEXT NOT NULL,
     demo INTEGER NOT NULL DEFAULT 0,
+    client TEXT,
     status TEXT NOT NULL,
     error TEXT,
     flagged_rows INTEGER,
@@ -85,7 +86,14 @@ class Store:
         with self._lock, self._db:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(SCHEMA)
+            self._add_missing_columns()
         self._interrupt_unfinished_jobs()
+
+    def _add_missing_columns(self) -> None:
+        """Databases made by an earlier version get the columns added since."""
+        have = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)")}
+        if "client" not in have:
+            self._db.execute("ALTER TABLE jobs ADD COLUMN client TEXT")
 
     def _query(self, sql: str, params=()) -> list[sqlite3.Row]:
         with self._lock, self._db:
@@ -173,15 +181,17 @@ class Store:
     def output_path(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "output_clean.csv"
 
-    def add_job(self, owner: str, upload: dict, mode: str, schema: dict, keep_seconds: float) -> dict:
+    def add_job(self, owner: str, upload: dict, mode: str, schema: dict, keep_seconds: float,
+                client: str | None = None) -> dict:
+        """client is a scrambled form of the visitor's address, used only to count their runs."""
         job_id = str(uuid.uuid4())
         self.job_dir(job_id).mkdir(parents=True, exist_ok=True)
         now = time.time()
         self._query(
-            "INSERT INTO jobs (id, owner, upload_id, filename, rows, mode, schema, demo, status, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)",
+            "INSERT INTO jobs (id, owner, upload_id, filename, rows, mode, schema, demo, client, status, "
+            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)",
             (job_id, owner, upload["id"], upload["filename"], upload["rows"], mode, json.dumps(schema),
-             int(upload["demo"]), now, now + keep_seconds),
+             int(upload["demo"]), client, now, now + keep_seconds),
         )
         return self.get_job(job_id, owner)
 
@@ -202,11 +212,19 @@ class Store:
         return [_job(r) for r in self._query(
             "SELECT * FROM jobs WHERE owner = ? ORDER BY created_at DESC", (owner,))]
 
-    def runs_since(self, owner: str, since: float) -> int:
-        """Runs that count toward a plan's limit: the demo file doesn't."""
-        rows = self._query(
-            "SELECT COUNT(*) AS n FROM jobs WHERE owner = ? AND demo = 0 AND created_at >= ?", (owner, since))
-        return rows[0]["n"]
+    def run_times(self, since: float, owner: str | None = None, client: str | None = None) -> list[float]:
+        """When each run that counts toward a limit started, oldest first: the demo file doesn't count.
+
+        By owner for an account, or by client for visitors who haven't signed in."""
+        if owner is not None:
+            rows = self._query(
+                "SELECT created_at FROM jobs WHERE owner = ? AND demo = 0 AND created_at >= ? ORDER BY created_at",
+                (owner, since))
+        else:
+            rows = self._query(
+                "SELECT created_at FROM jobs WHERE client = ? AND owner LIKE 'session:%' AND demo = 0 "
+                "AND created_at >= ? ORDER BY created_at", (client, since))
+        return [r["created_at"] for r in rows]
 
     def delete_job(self, job_id: str) -> None:
         shutil.rmtree(self.job_dir(job_id), ignore_errors=True)

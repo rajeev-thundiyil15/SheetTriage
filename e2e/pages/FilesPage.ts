@@ -6,14 +6,14 @@ export class FilesPage {
   readonly jobs: Locator;
   readonly empty: Locator;
   readonly signInNotice: Locator;
-  readonly runsThisMonth: Locator;
+  readonly runsUsed: Locator;
 
   constructor(readonly page: Page) {
     this.subtitle = page.locator('#page-sub');
     this.jobs = page.locator('.job');
     this.empty = page.locator('#jobs-empty');
     this.signInNotice = page.locator('#sign-in-notice');
-    this.runsThisMonth = page.locator('#stat-runs');
+    this.runsUsed = page.locator('#stat-runs');
   }
 
   async goto() {
