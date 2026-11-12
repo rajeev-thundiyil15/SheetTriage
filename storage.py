@@ -53,8 +53,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL,
     error TEXT,
     flagged_rows INTEGER,
+    model TEXT,
+    steps INTEGER NOT NULL DEFAULT 0,
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
     created_at REAL NOT NULL,
     finished_at REAL,
     expires_at REAL NOT NULL
@@ -92,8 +96,16 @@ class Store:
     def _add_missing_columns(self) -> None:
         """Databases made by an earlier version get the columns added since."""
         have = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)")}
-        if "client" not in have:
-            self._db.execute("ALTER TABLE jobs ADD COLUMN client TEXT")
+        added = {
+            "client": "TEXT",
+            "model": "TEXT",
+            "steps": "INTEGER NOT NULL DEFAULT 0",
+            "cache_write_tokens": "INTEGER NOT NULL DEFAULT 0",
+            "cache_read_tokens": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for name, kind in added.items():
+            if name not in have:
+                self._db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {kind}")
 
     def _query(self, sql: str, params=()) -> list[sqlite3.Row]:
         with self._lock, self._db:
@@ -207,6 +219,20 @@ class Store:
         if fields:
             columns = ", ".join(f"{name} = ?" for name in fields)
             self._query(f"UPDATE jobs SET {columns} WHERE id = ?", (*fields.values(), job_id))
+
+    def add_usage(self, job_id: str, usage: dict) -> None:
+        """Adds one Claude request's tokens to the run's totals."""
+        self._query(
+            "UPDATE jobs SET model = ?, steps = steps + 1, input_tokens = input_tokens + ?, "
+            "output_tokens = output_tokens + ?, cache_write_tokens = cache_write_tokens + ?, "
+            "cache_read_tokens = cache_read_tokens + ? WHERE id = ?",
+            (usage.get("model"), usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+             usage.get("cache_write_tokens", 0), usage.get("cache_read_tokens", 0), job_id))
+
+    def all_jobs(self, since: float = 0) -> list[dict]:
+        """Every run since a time, newest first: for the owner's cost report, never for a request."""
+        return [_job(r) for r in self._query(
+            "SELECT * FROM jobs WHERE created_at >= ? ORDER BY created_at DESC", (since,))]
 
     def jobs_of(self, owner: str) -> list[dict]:
         return [_job(r) for r in self._query(

@@ -349,3 +349,49 @@ def test_the_demo_file_is_only_offered_locally(store, monkeypatch):
 
     assert client.get("/me").json()["demo_data"] is False
     assert client.post("/upload-demo").status_code == 404
+
+
+def test_each_claude_request_adds_its_tokens_to_the_run(store, monkeypatch):
+    def agent_with_two_requests(df, schema, output_path, mode, on_log):
+        for tokens in (1000, 3000):
+            on_log({"type": "usage", "model": "claude-haiku-4-5-20251001", "input_tokens": tokens,
+                    "output_tokens": tokens // 10, "cache_write_tokens": 0, "cache_read_tokens": 200})
+        scripted_agent(df, schema, output_path, mode, on_log)
+    monkeypatch.setattr(web, "run_agent", agent_with_two_requests)
+    client = browser()
+
+    job_id = run(client)
+
+    job = store.get_job(job_id, None)
+    assert (job["steps"], job["input_tokens"], job["output_tokens"], job["cache_read_tokens"]) == (2, 4000, 400, 400)
+    assert "usage" not in client.get(f"/stream/{job_id}").text
+
+
+def test_the_cost_report_prices_runs_by_model(store):
+    import costs
+    upload_row = store.add_upload("session:x", "pay.csv", CSV, 5000, ["id", "pay"], keep_seconds=60)
+    job = store.add_job("session:x", upload_row, "clean", {}, keep_seconds=60)
+    store.add_usage(job["id"], {"model": "claude-haiku-4-5-20251001", "input_tokens": 100_000,
+                                "output_tokens": 10_000, "cache_write_tokens": 0, "cache_read_tokens": 0})
+
+    # 100k input at $1/M plus 10k output at $5/M
+    assert costs.run_cost(store.get_job(job["id"], None)) == pytest.approx(0.15)
+    text = costs.report(store, days=1)
+    assert "$0.150" in text
+    assert "1k-5k rows: 1 runs" in text
+
+
+def test_a_database_from_before_the_new_columns_is_upgraded(tmp_path):
+    import sqlite3
+    old = sqlite3.connect(tmp_path / "sheettriage.db")
+    old.executescript("""CREATE TABLE jobs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, upload_id TEXT NOT NULL,
+        filename TEXT NOT NULL, rows INTEGER NOT NULL, mode TEXT NOT NULL, schema TEXT NOT NULL,
+        demo INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error TEXT, flagged_rows INTEGER,
+        input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at REAL NOT NULL, finished_at REAL, expires_at REAL NOT NULL);""")
+    old.close()
+
+    upgraded = Store(tmp_path)
+
+    columns = {row[1] for row in upgraded._db.execute("PRAGMA table_info(jobs)")}
+    assert {"client", "model", "steps", "cache_write_tokens", "cache_read_tokens"} <= columns

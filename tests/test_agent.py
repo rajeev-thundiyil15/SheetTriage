@@ -148,3 +148,12 @@ def test_agent_text_is_shown_without_markdown_or_emoji(raw, plain):
     from agent import plain_text
 
     assert plain_text(raw) == plain
+
+
+def test_each_request_reports_the_tokens_it_used():
+    response = SimpleNamespace(usage=SimpleNamespace(
+        input_tokens=1200, output_tokens=80, cache_creation_input_tokens=None, cache_read_input_tokens=300))
+
+    assert agent.usage_event(response) == {
+        "type": "usage", "model": agent.MODEL, "input_tokens": 1200, "output_tokens": 80,
+        "cache_write_tokens": 0, "cache_read_tokens": 300}

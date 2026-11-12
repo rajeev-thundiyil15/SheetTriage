@@ -334,6 +334,23 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
         return json.dumps({"error": str(exc)})
 
 
+MODEL = "claude-haiku-4-5-20251001"
+
+
+def usage_event(response) -> dict:
+    """The tokens one Claude request used, so each run's real cost can be recorded."""
+    usage = getattr(response, "usage", None)
+    count = lambda name: int(getattr(usage, name, 0) or 0)  # noqa: E731
+    return {
+        "type": "usage",
+        "model": MODEL,
+        "input_tokens": count("input_tokens"),
+        "output_tokens": count("output_tokens"),
+        "cache_write_tokens": count("cache_creation_input_tokens"),
+        "cache_read_tokens": count("cache_read_input_tokens"),
+    }
+
+
 def run_agent(
     df: pd.DataFrame,
     schema: DataSchema,
@@ -462,12 +479,14 @@ Be brief. One sentence of reasoning per step. Always mark with mark_remaining_vi
         _log({"type": "iteration", "n": iteration + 1})
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=MODEL,
             max_tokens=4096,
             system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             tools=TOOL_DEFINITIONS,
             messages=messages,
         )
+
+        _log(usage_event(response))
 
         agent_text, tool_calls_made = [], []
         for block in response.content:

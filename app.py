@@ -456,6 +456,10 @@ async def clean(
     job_store = store
 
     def on_log(event: dict) -> None:
+        # Token counts go on the run's record for the cost report; they aren't shown to people.
+        if event.get("type") == "usage":
+            job_store.add_usage(job_id, event)
+            return
         job_store.add_event(job_id, event)
 
     def run():

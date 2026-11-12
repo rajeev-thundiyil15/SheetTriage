@@ -56,6 +56,8 @@ def fake_run_agent(df, schema, output_path, mode, on_log):
         if FAIL_COLUMN in df.columns and step == 2:
             raise _overloaded_error()
         on_log({"type": "iteration", "n": step})
+        on_log({"type": "usage", "model": "scripted", "input_tokens": 1000, "output_tokens": 100,
+                "cache_write_tokens": 0, "cache_read_tokens": 0})
         on_log({"type": "tool_call", "name": "mark_remaining_violations", "input_summary": f"Checking {column}"})
         flagged += json.loads(tools.mark_remaining_violations(column, schema))["marked"]
         status = {name: "clean" if i < step else "pending" for i, name in enumerate(columns)}
