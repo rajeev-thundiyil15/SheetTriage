@@ -23,6 +23,8 @@ data/uploads/
 data/jobs/
 !data/dirty_employees.csv
 !data/dirty_products.csv
+!data/test_registrations.csv
+!data/test_shop_orders.csv
 
 # OS
 .DS_Store

@@ -1,0 +1,70 @@
+{
+  "name": "shop_orders",
+  "columns": {
+    "order_id": {
+      "dtype": "int",
+      "nullable": false
+    },
+    "customer": {
+      "dtype": "str",
+      "nullable": false
+    },
+    "email": {
+      "dtype": "str",
+      "nullable": false,
+      "pattern": ".+@.+\\..+"
+    },
+    "product": {
+      "dtype": "str",
+      "nullable": false,
+      "allowed_values": [
+        "Laptop",
+        "Monitor",
+        "Keyboard",
+        "Mouse",
+        "Headset",
+        "Webcam"
+      ]
+    },
+    "unit_price": {
+      "dtype": "float",
+      "nullable": false,
+      "min_value": 0,
+      "max_value": 3000
+    },
+    "quantity": {
+      "dtype": "int",
+      "nullable": false,
+      "min_value": 1,
+      "max_value": 20
+    },
+    "order_date": {
+      "dtype": "date",
+      "nullable": false,
+      "date_format": "MDY"
+    },
+    "status": {
+      "dtype": "str",
+      "nullable": false,
+      "allowed_values": [
+        "Pending",
+        "Shipped",
+        "Delivered",
+        "Cancelled"
+      ]
+    },
+    "payment_method": {
+      "dtype": "str",
+      "nullable": false,
+      "allowed_values": [
+        "Card",
+        "PayPal",
+        "Bank Transfer"
+      ]
+    },
+    "gift_message": {
+      "dtype": "str",
+      "nullable": true
+    }
+  }
+}
