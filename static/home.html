@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SheetTriage</title>
+  <meta name="description" content="SheetTriage checks your spreadsheet for mistakes, fixes the ones with one obvious answer, and marks the rest for you to decide. It never guesses or deletes your data.">
   <link rel="stylesheet" href="/static/account.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,23 +14,18 @@
     :root {
       --text:       #09090b;
       --text-muted: #71717a;
-      --text-light: #a1a1aa;
       --border:     #e4e4e7;
       --bg:         #fafafa;
       --surface:    #ffffff;
       --accent:     #18181b;
       --accent-hover: #3f3f46;
-      --blue:       #2563eb;
       --green:      #16a34a;
       --radius:     8px;
     }
 
     body {
-      font-family: 'Inter', sans-serif;
-      background: var(--surface);
-      color: var(--text);
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
+      font-family: 'Inter', sans-serif; background: var(--surface); color: var(--text);
+      line-height: 1.5; -webkit-font-smoothing: antialiased;
     }
 
     /* ── Nav ── */
@@ -37,159 +33,137 @@
       position: sticky; top: 0; z-index: 10;
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 40px; height: 56px;
-      background: rgba(255,255,255,.92);
-      backdrop-filter: blur(8px);
+      background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--border);
     }
-    .nav-logo {
-      font-size: 15px; font-weight: 700;
-      color: var(--text); letter-spacing: -.01em;
-    }
+    .nav-logo { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+
     /* ── Hero ── */
-    .hero {
-      max-width: 680px; margin: 0 auto;
-      padding: 88px 24px 72px;
-      text-align: center;
-    }
+    .hero { max-width: 720px; margin: 0 auto; padding: 80px 24px 64px; text-align: center; }
     .hero-tag {
-      display: inline-block;
-      font-size: 11px; font-weight: 600; letter-spacing: .06em;
+      display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .06em;
       text-transform: uppercase; color: var(--text-muted);
-      border: 1px solid var(--border); border-radius: 20px;
-      padding: 4px 10px; margin-bottom: 28px;
+      border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; margin-bottom: 24px;
     }
     .hero h1 {
-      font-size: clamp(30px, 5vw, 48px);
-      font-weight: 700; line-height: 1.12;
-      letter-spacing: -.03em;
-      color: var(--text); margin-bottom: 18px;
+      font-size: clamp(30px, 5vw, 46px); font-weight: 700; line-height: 1.12;
+      letter-spacing: -.03em; margin-bottom: 18px;
     }
-    .hero p {
-      font-size: 17px; color: var(--text-muted);
-      line-height: 1.65; max-width: 500px;
-      margin: 0 auto 36px;
-    }
+    .hero p { font-size: 17px; color: var(--text-muted); line-height: 1.65; max-width: 560px; margin: 0 auto 32px; }
     .hero-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--accent); color: white;
-      padding: 10px 20px; border-radius: var(--radius);
-      font-size: 14px; font-weight: 500;
-      text-decoration: none; transition: background .15s;
+    .btn {
+      display: inline-flex; align-items: center; padding: 10px 20px; border-radius: var(--radius);
+      font-size: 14px; font-weight: 500; text-decoration: none; transition: background .15s;
     }
+    .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-hover); }
-    /* ── How it works strip ── */
-    .steps-strip {
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      background: var(--bg);
-      padding: 20px 40px;
-      display: flex; align-items: center; justify-content: center;
-      gap: 0; flex-wrap: wrap;
+    .btn-secondary { color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--bg); }
+    .hero-note { margin-top: 16px; font-size: 13px; color: var(--text-muted); }
+
+    /* ── Sections ── */
+    .band { border-top: 1px solid var(--border); }
+    .band.shaded { background: var(--bg); }
+    .section { max-width: 1000px; margin: 0 auto; padding: 64px 24px; }
+    .section-header { margin-bottom: 32px; max-width: 640px; }
+    .section-header h2 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 8px; }
+    .section-header p { font-size: 15px; color: var(--text-muted); line-height: 1.6; }
+
+    /* ── What it does with each problem ── */
+    .outcomes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .outcome {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 24px; display: flex; flex-direction: column; gap: 12px;
     }
-    .step-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 16px;
-      font-size: 13px; color: var(--text-muted);
+    .outcome-badge {
+      align-self: flex-start; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
     }
+    .fixed .outcome-badge { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .flagged .outcome-badge { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .never .outcome-badge { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+    .outcome h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+    .outcome p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+    .outcome ul { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+    .outcome li { font-size: 13px; line-height: 1.5; }
+    .outcome li .was { color: #b91c1c; text-decoration: line-through; }
+    .outcome li .now { color: #166534; }
+    .outcome li .why { color: var(--text-muted); }
+    .callout {
+      margin-top: 24px; padding: 16px 20px; border-radius: 10px;
+      background: #fffbeb; border: 1px solid #fde68a; font-size: 15px; line-height: 1.6; color: #713f12;
+    }
+    .callout strong { color: #451a03; }
+
+    /* ── How it works ── */
+    .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; counter-reset: step; }
+    .step h3 { font-size: 15px; font-weight: 600; margin: 12px 0 6px; }
+    .step p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
     .step-num {
-      width: 20px; height: 20px; border-radius: 50%;
-      background: var(--border); color: var(--text-muted);
-      font-size: 11px; font-weight: 600;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff;
+      font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;
     }
-    .step-divider {
-      width: 24px; height: 1px; background: var(--border);
+
+    /* ── Example ── */
+    .example-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .example { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+    .example th {
+      text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--text-muted); background: var(--bg); padding: 10px 16px; border-bottom: 1px solid var(--border);
     }
+    .example td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+    .example tr:last-child td { border-bottom: 0; }
+    .example code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 13px; }
+    .tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+    .tag.fixed { background: #f0fdf4; color: #166534; }
+    .tag.flagged { background: #fffbeb; color: #92400e; }
+    .tag.reformatted { background: #eff6ff; color: #1d4ed8; }
 
     /* ── Modes ── */
-    .section {
-      max-width: 1000px; margin: 0 auto;
-      padding: 72px 24px;
-    }
-    .section-header { margin-bottom: 40px; }
-    .section-header h2 {
-      font-size: 22px; font-weight: 700;
-      letter-spacing: -.02em; margin-bottom: 6px;
-    }
-    .section-header p { font-size: 14px; color: var(--text-muted); }
+    .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .mode { border: 1px solid var(--border); border-radius: 10px; padding: 20px; background: var(--surface); }
+    .mode h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .mode .when { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+    .mode p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 
-    .modes-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
-      background: var(--border); border: 1px solid var(--border);
-      border-radius: 10px; overflow: hidden;
-    }
-    .mode-cell {
-      background: var(--surface); padding: 28px 24px;
-      display: flex; flex-direction: column;
-      text-decoration: none; color: inherit;
-      transition: background .15s;
-      position: relative;
-    }
-    .mode-cell:hover { background: var(--bg); }
-    .mode-indicator {
-      width: 32px; height: 3px; border-radius: 2px;
-      margin-bottom: 20px;
-    }
-    .mode-cell:nth-child(1) .mode-indicator { background: #a1a1aa; }
-    .mode-cell:nth-child(2) .mode-indicator { background: var(--blue); }
-    .mode-cell:nth-child(3) .mode-indicator { background: var(--green); }
+    /* ── Questions ── */
+    .faq { display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+    .faq details { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .faq summary { cursor: pointer; padding: 14px 18px; font-size: 15px; font-weight: 500; list-style: none; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: '+'; float: right; color: var(--text-muted); }
+    .faq details[open] summary::after { content: '\2212'; }
+    .faq details p { padding: 0 18px 16px; font-size: 14px; color: var(--text-muted); line-height: 1.65; }
+    .faq a { color: var(--text); }
 
-    .mode-cell h3 {
-      font-size: 15px; font-weight: 600;
-      letter-spacing: -.01em; margin-bottom: 8px;
-    }
-    .mode-cell .mode-tag {
-      font-size: 11px; font-weight: 500; color: var(--text-muted);
-      margin-bottom: 14px;
-    }
-    .mode-cell p {
-      font-size: 13px; color: var(--text-muted);
-      line-height: 1.65; flex: 1; margin-bottom: 20px;
-    }
-    .mode-link {
-      font-size: 13px; font-weight: 500; color: var(--text);
-      display: flex; align-items: center; gap: 4px;
-    }
-    .mode-cell:hover .mode-link { color: var(--blue); }
-
-    /* ── What it catches ── */
-    .catches-section {
-      border-top: 1px solid var(--border);
-      background: var(--bg);
-    }
-    .catches-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
-      background: var(--border); border: 1px solid var(--border);
-      border-radius: 10px; overflow: hidden;
-    }
-    .catch-row {
-      background: var(--surface); padding: 14px 18px;
-      display: flex; justify-content: space-between; align-items: center;
-      gap: 16px; font-size: 13px;
-    }
-    .catch-label { color: var(--text); font-weight: 500; }
-    .catch-example { color: var(--text-muted); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 11px; text-align: right; }
-    .catch-example .bad  { color: #ef4444; text-decoration: line-through; }
-    .catch-example .good { color: var(--green); }
-    .catch-example .flag { color: #f59e0b; }
+    .closing { text-align: center; }
+    .closing h2 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; }
+    .closing p { font-size: 15px; color: var(--text-muted); margin-bottom: 24px; }
 
     /* ── Footer ── */
     footer {
-      border-top: 1px solid var(--border);
-      padding: 24px 40px;
-      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid var(--border); padding: 24px 40px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
       font-size: 12px; color: var(--text-muted);
     }
 
-    @media (max-width: 720px) {
-      .modes-grid { grid-template-columns: 1fr; }
-      .catches-grid { grid-template-columns: 1fr; }
-      .steps-strip { flex-direction: column; gap: 4px; }
-      .step-divider { width: 1px; height: 16px; }
-      nav { padding: 0 20px; }
-      .hero { padding: 56px 20px 48px; }
+    @media (max-width: 860px) {
+      .outcomes, .modes { grid-template-columns: minmax(0, 1fr); }
+      .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      nav, footer { padding-left: 16px; padding-right: 16px; }
+      .hero { padding: 48px 16px 40px; }
+      .section { padding: 48px 16px; }
+      .steps { grid-template-columns: minmax(0, 1fr); }
+      /* The example table becomes one small card per row. */
+      .example { min-width: 0; }
+      .example thead { display: none; }
+      .example tr { display: block; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+      .example tr:last-child { border-bottom: 0; }
+      .example td { display: block; padding: 2px 0; border: 0; }
+      .example td:nth-child(1)::before { content: 'In your file: '; color: var(--text-muted); font-size: 13px; }
+      .example td:nth-child(2)::before { content: 'After: '; color: var(--text-muted); font-size: 13px; }
+      .example td:nth-child(3) { margin-top: 6px; }
     }
   </style>
 </head>
@@ -200,99 +174,182 @@
   <span id="account-nav"></span>
 </nav>
 
-<!-- Hero -->
 <section class="hero">
-  <div class="hero-tag">Data quality, automated</div>
-  <h1>Triage your spreadsheet data before it causes problems</h1>
-  <p>Upload a CSV, describe your rules in plain English, and an AI agent inspects every field — fixing what it can, flagging what it can't.</p>
+  <div class="hero-tag">For messy spreadsheets</div>
+  <h1>Find the mistakes in your spreadsheet, and fix the ones that are safe to fix</h1>
+  <p>SheetTriage checks every row of your file against rules you choose. It fixes mistakes that have one obvious answer, like a typo or a date written differently, and marks everything else for you to decide. It never makes up a value or deletes your data.</p>
   <div class="hero-actions">
-    <a href="/app" class="btn-primary">Get started</a>
+    <a href="/app" class="btn btn-primary">Check a file</a>
+    <a href="#what-it-does" class="btn btn-secondary">What it fixes, and what it doesn't</a>
+  </div>
+  <p class="hero-note">Free to try, no sign-up needed. Works with any spreadsheet saved as CSV, up to 30,000 rows.</p>
+</section>
+
+<section class="band shaded" id="what-it-does">
+  <div class="section">
+    <div class="section-header">
+      <h2>What happens to each problem it finds</h2>
+      <p>Every problem ends up in one of three places. You can see which, and why, for every single cell.</p>
+    </div>
+    <div class="outcomes">
+      <div class="outcome fixed">
+        <span class="outcome-badge">Fixed for you</span>
+        <h3>When there's only one right answer</h3>
+        <p>Spelling slips, wrong capital letters, and dates or numbers written in a different style.</p>
+        <ul>
+          <li><span class="was">Moniter</span> &rarr; <span class="now">Monitor</span></li>
+          <li><span class="was">paypal</span> &rarr; <span class="now">PayPal</span></li>
+          <li><span class="was">Feb 3 2026</span> &rarr; <span class="now">2026-02-03</span></li>
+        </ul>
+      </div>
+      <div class="outcome flagged">
+        <span class="outcome-badge">Flagged for you to check</span>
+        <h3>When fixing it would mean guessing</h3>
+        <p>Missing values, numbers that aren't numbers, and anything outside your rules. Each one comes with a plain reason.</p>
+        <ul>
+          <li>Blank email <span class="why">(only you know it)</span></li>
+          <li>"call for price" <span class="why">(in a price column)</span></li>
+          <li>"Credit Card" <span class="why">(not one of your payment types)</span></li>
+        </ul>
+      </div>
+      <div class="outcome never">
+        <span class="outcome-badge">Never</span>
+        <h3>Things it won't do</h3>
+        <p>So you can trust what comes back.</p>
+        <ul>
+          <li>Make up a value to fill a gap</li>
+          <li>Swap a value for a "close enough" one</li>
+          <li>Delete a row, unless you choose Strict clean</li>
+          <li>Change your original file</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>So a cleaned file can still have rows to check, and that's on purpose.</strong> A wrong fix you don't notice does more damage than a flag you can see. Flagged rows stay in your file with a note saying what's wrong, and the error report lists every one, so you can correct them and run the file again.
+    </div>
   </div>
 </section>
 
-<!-- How it works -->
-<div class="steps-strip">
-  <div class="step-item"><span class="step-num">1</span> Upload a CSV</div>
-  <div class="step-divider"></div>
-  <div class="step-item"><span class="step-num">2</span> Describe your rules</div>
-  <div class="step-divider"></div>
-  <div class="step-item"><span class="step-num">3</span> Agent inspects and fixes</div>
-  <div class="step-divider"></div>
-  <div class="step-item"><span class="step-num">4</span> Download results</div>
-</div>
-
-<!-- Modes -->
-<div class="section">
-  <div class="section-header">
-    <h2>Choose how to handle your data</h2>
-    <p>Three modes depending on how much you want the agent to intervene.</p>
-  </div>
-  <div class="modes-grid">
-    <a href="/app?mode=audit" class="mode-cell">
-      <div class="mode-indicator"></div>
-      <h3>Audit Only</h3>
-      <p class="mode-tag">For understanding your data quality</p>
-      <p>Validates every column and returns a report of all violations. Nothing in your data is modified.</p>
-      <span class="mode-link">Start audit &rarr;</span>
-    </a>
-    <a href="/app?mode=clean" class="mode-cell">
-      <div class="mode-indicator"></div>
-      <h3>Clean + Report</h3>
-      <p class="mode-tag">For most use cases</p>
-      <p>Fixes safe errors automatically — typos, type coercion, date formats. Flags everything else. No row is ever silently deleted.</p>
-      <span class="mode-link">Start cleaning &rarr;</span>
-    </a>
-    <a href="/app?mode=strict" class="mode-cell">
-      <div class="mode-indicator"></div>
-      <h3>Strict Clean</h3>
-      <p class="mode-tag">For pipelines and databases</p>
-      <p>Outputs only rows that fully pass validation. Anything that can't be corrected is removed and documented in a separate report.</p>
-      <span class="mode-link">Start strict clean &rarr;</span>
-    </a>
-  </div>
-</div>
-
-<!-- What it catches -->
-<section class="catches-section">
+<section class="band">
   <div class="section">
     <div class="section-header">
-      <h2>What the agent catches</h2>
-      <p>Examples from real dirty data. The agent handles all of these and explains every decision in the log.</p>
+      <h2>How it works</h2>
+      <p>About a minute for most files.</p>
     </div>
-    <div class="catches-grid">
-      <div class="catch-row">
-        <span class="catch-label">Typo in category</span>
-        <span class="catch-example"><span class="bad">Electronis</span> &rarr; <span class="good">Electronics</span></span>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">1</span>
+        <h3>Upload your file</h3>
+        <p>Any spreadsheet saved as CSV, including files from Excel.</p>
       </div>
-      <div class="catch-row">
-        <span class="catch-label">Wrong capitalisation</span>
-        <span class="catch-example"><span class="bad">sports</span> &rarr; <span class="good">Sports</span></span>
+      <div class="step">
+        <span class="step-num">2</span>
+        <h3>Answer a few questions</h3>
+        <p>SheetTriage reads your columns and suggests rules, such as which values are allowed. It only asks about things it can't tell on its own, like whether 03/04 means March 4 or April 3.</p>
       </div>
-      <div class="catch-row">
-        <span class="catch-label">Number stored as text</span>
-        <span class="catch-example"><span class="bad">"sixty five"</span> &rarr; <span class="flag">flagged</span></span>
+      <div class="step">
+        <span class="step-num">3</span>
+        <h3>Watch it check every column</h3>
+        <p>An AI assistant works through the file column by column, using checks that follow your rules exactly. You can see what it's doing as it goes.</p>
       </div>
-      <div class="catch-row">
-        <span class="catch-label">Invalid email</span>
-        <span class="catch-example"><span class="bad">bob-no-at-sign</span> &rarr; <span class="flag">flagged</span></span>
-      </div>
-      <div class="catch-row">
-        <span class="catch-label">Value below minimum</span>
-        <span class="catch-example"><span class="bad">stock_qty: -10</span> &rarr; <span class="flag">flagged</span></span>
-      </div>
-      <div class="catch-row">
-        <span class="catch-label">Missing required field</span>
-        <span class="catch-example"><span class="bad">name: (empty)</span> &rarr; <span class="flag">flagged</span></span>
-      </div>
-      <div class="catch-row">
-        <span class="catch-label">Rating out of range</span>
-        <span class="catch-example"><span class="bad">6.2</span> &rarr; <span class="flag">flagged (max 5)</span></span>
-      </div>
-      <div class="catch-row">
-        <span class="catch-label">Non-standard date format</span>
-        <span class="catch-example"><span class="bad">15/07/2024</span> &rarr; <span class="good">2024-07-15</span></span>
+      <div class="step">
+        <span class="step-num">4</span>
+        <h3>Review and download</h3>
+        <p>See flagged cells highlighted and fixes marked, then download the cleaned file and a list of everything left to check.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="band shaded">
+  <div class="section">
+    <div class="section-header">
+      <h2>An example</h2>
+      <p>Part of a shop's order list, before and after.</p>
+    </div>
+    <div class="example-wrap">
+      <table class="example">
+        <thead>
+          <tr><th>In your file</th><th>After SheetTriage</th><th>What happened</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Delivred</code></td><td><code>Delivered</code></td><td><span class="tag fixed">Fixed</span> A close misspelling of an allowed status.</td></tr>
+          <tr><td><code>keyboard</code></td><td><code>Keyboard</code></td><td><span class="tag fixed">Fixed</span> Only the capital letter was different.</td></tr>
+          <tr><td><code>02/11/2026</code></td><td><code>2026-02-11</code></td><td><span class="tag reformatted">Same date, standard format</span> Every date is written the same way, so other software reads it correctly.</td></tr>
+          <tr><td><code>Returned</code></td><td><code>Returned</code></td><td><span class="tag flagged">Flagged</span> Not one of your statuses. Should it be added, or is it a mistake? Only you know.</td></tr>
+          <tr><td><code>€249.99</code></td><td><code>€249.99</code></td><td><span class="tag flagged">Flagged</span> A price in another currency can't be converted safely.</td></tr>
+          <tr><td><code>02/29/2026</code></td><td><code>02/29/2026</code></td><td><span class="tag flagged">Flagged</span> February 29 doesn't exist in 2026. Was it the 28th, or March 1?</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="section">
+    <div class="section-header">
+      <h2>Three ways to run it</h2>
+      <p>You choose before it starts. Most people use the middle one.</p>
+    </div>
+    <div class="modes">
+      <div class="mode">
+        <h3>Audit only</h3>
+        <p class="when">To see how messy a file is</p>
+        <p>Nothing is changed. You get a list of every problem.</p>
+      </div>
+      <div class="mode">
+        <h3>Clean + report</h3>
+        <p class="when">For most files</p>
+        <p>Safe fixes are made. Everything else is flagged, and every row stays in the file.</p>
+      </div>
+      <div class="mode">
+        <h3>Strict clean</h3>
+        <p class="when">When the file must be fully clean</p>
+        <p>Safe fixes are made, and rows that still have problems are left out of the cleaned file. They're kept in the error report, so nothing is lost.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band shaded">
+  <div class="section">
+    <div class="section-header">
+      <h2>Questions</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Why didn't it fix everything?</summary>
+        <p>Because some fixes would be guesses. If an email is blank, or a price says "call for price", there's no way to know the right value from the file. SheetTriage marks these for you rather than inventing something that looks right but isn't.</p>
+      </details>
+      <details>
+        <summary>What do I do with the flagged rows?</summary>
+        <p>Each one says what's wrong. Correct them in your original spreadsheet and run it again, or, if a flagged value is actually fine (say you've started accepting a new payment type), add it to the allowed values on the rules page.</p>
+      </details>
+      <details>
+        <summary>Will it delete my data?</summary>
+        <p>No. Every row stays in the cleaned file unless you choose Strict clean, and even then the left-out rows are listed in the error report. Your original file is never changed.</p>
+      </details>
+      <details>
+        <summary>Who can see my file?</summary>
+        <p>Only you. Without signing in, results are kept for an hour in your browser. Sign in to keep them for 7 days. The AI assistant is sent your column names, the first few rows and the values that break a rule, not the whole file. The <a href="/privacy">privacy page</a> has the details.</p>
+      </details>
+      <details>
+        <summary>What does it cost?</summary>
+        <p>Nothing to try: you get 3 runs a day for free, with or without an account.</p>
+      </details>
+      <details>
+        <summary>What files can I use?</summary>
+        <p>Spreadsheets saved as CSV, up to 5 MB and 30,000 rows. Files from Excel work, including ones that use semicolons. Please don't upload card numbers, ID numbers or health records.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="section closing">
+    <h2>Try it on your own file</h2>
+    <p>Fixes the safe mistakes, shows you the rest.</p>
+    <a href="/app" class="btn btn-primary">Check a file</a>
   </div>
 </section>
 
