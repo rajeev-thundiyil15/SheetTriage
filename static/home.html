@@ -322,6 +322,10 @@
         <p>Because some fixes would be guesses. If an email is blank, or a price says "call for price", there's no way to know the right value from the file. SheetTriage marks these for you rather than inventing something that looks right but isn't.</p>
       </details>
       <details>
+        <summary>How is this different from asking ChatGPT or Claude to fix my file?</summary>
+        <p>A chatbot tries its best each time, which means it may quietly guess a value, drop rows from a long file, or fix things differently if you ask twice, and you'd have to compare the files to find out. In SheetTriage the rules are enforced by code: a fix that would be a guess can't be saved, every row is kept, every change and flag is marked with a reason, and the same file gives the same result every time. The AI only sees your column names, the first few rows and the values that break a rule, not the whole file. A chatbot is still the better choice for judgement calls, like working out a missing country from a city, or for reshaping and exploring data.</p>
+      </details>
+      <details>
         <summary>What do I do with the flagged rows?</summary>
         <p>Each one says what's wrong. Correct them in your original spreadsheet and run it again, or, if a flagged value is actually fine (say you've started accepting a new payment type), add it to the allowed values on the rules page.</p>
       </details>
