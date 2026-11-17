@@ -18,6 +18,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -33,6 +34,9 @@ from schema_infer import infer_schema  # noqa: E402
 from storage import UNFINISHED, Store  # noqa: E402
 
 app = FastAPI(title="SheetTriage")
+# The review of a large file is several MB of JSON; compressed, it's a tenth of that.
+# Live progress (text/event-stream) is left uncompressed by the middleware.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 Path("static").mkdir(exist_ok=True)
 

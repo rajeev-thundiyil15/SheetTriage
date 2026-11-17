@@ -294,3 +294,27 @@ def test_strict_runs_have_nothing_to_decide(client):
 
     assert client.get(f"/review/{job_id}").json()["suggestions"] == []
     assert client.post(f"/api/jobs/{job_id}/decisions", json={"id": "c1", "action": "keep"}).status_code == 404
+
+
+def test_cells_with_the_same_value_share_one_question_to_claude():
+    output = pd.DataFrame({"payment": ["Credit Card", "Credit Card", "Credit Card"]})
+    report = [report_entry(r, "payment", "Credit Card", "'Credit Card' not in allowed values") for r in (2, 3, 4)]
+    asked = []
+
+    def rank(cells):
+        asked.extend(cells)
+        return {cells[0]["id"]: (0, "Card is the only close payment type.")}
+
+    found = [s for s in fixes.build_suggestions(output, report, SCHEMA, rank=rank) if s["kind"] == "cell"]
+
+    assert len(asked) == 1
+    assert [s["recommended"] for s in found] == [0, 0, 0]
+    assert {s["reason"] for s in found} == {"Card is the only close payment type."}
+
+
+def test_large_reviews_are_sent_compressed(client):
+    job_id = run(client)
+
+    response = client.get(f"/review/{job_id}", headers={"Accept-Encoding": "gzip"})
+
+    assert response.headers.get("content-encoding") == "gzip"

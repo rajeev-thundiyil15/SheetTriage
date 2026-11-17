@@ -25,7 +25,7 @@ from schema import DataSchema
 from tools import NUMERIC_DATE, _parse_date
 
 HEADER_ROWS = 1
-MAX_RANKED = 150          # cells sent to Claude in one run; the rest keep the code's order
+MAX_RANKED = 200          # distinct values sent to Claude in one run; cells sharing a value share the answer
 MAX_OPTIONS = 3
 SIMILAR_ENOUGH = 0.5      # looser than the automatic typo rule: these are options for a person to pick
 NEAR_THE_BEST = 0.25      # and only those nearly as close as the best one
@@ -181,13 +181,17 @@ def build_suggestions(output: pd.DataFrame, report: list[dict], schema: DataSche
     rank(cells) returns {id: (option index or None, reason)}; see rank_with_ai."""
     suggestions = []
     cells = {}
+    counts_by_column = {}
     for entry in report:
         key = (entry["row"], entry["column"])
         if key in cells:
             cells[key]["issues"].append(entry["issue"])
             continue
         rules = schema.columns.get(entry["column"])
-        counts = Counter(output[entry["column"]].astype(str)) if entry["column"] in output.columns else Counter()
+        if entry["column"] not in counts_by_column:
+            counts_by_column[entry["column"]] = (
+                Counter(output[entry["column"]].astype(str)) if entry["column"] in output.columns else Counter())
+        counts = counts_by_column[entry["column"]]
         options = cell_options(str(entry["value"]), entry["issue"], rules, counts) if rules else []
         cells[key] = {
             "id": f"c{len(cells) + 1}",
@@ -203,14 +207,23 @@ def build_suggestions(output: pd.DataFrame, report: list[dict], schema: DataSche
         }
     suggestions.extend(cells.values())
 
-    with_options = [s for s in suggestions if s["options"]][:MAX_RANKED]
-    if rank and with_options:
-        picks = rank(with_options)
-        for s in with_options:
-            pick, reason = picks.get(s["id"], (None, ""))
-            if isinstance(pick, int) and 0 <= pick < len(s["options"]):
-                s["recommended"] = pick
-            s["reason"] = str(reason or "")[:300]
+    # Cells with the same value and the same options get the same answer, so Claude is asked once
+    # per distinct value: a file with Credit Card in 40 rows needs one recommendation, not 40.
+    groups = {}
+    for s in suggestions:
+        if s["options"]:
+            key = (s["column"], s["value"], s["issues"][0], tuple(o["value"] for o in s["options"]))
+            groups.setdefault(key, []).append(s)
+    asked = [cells_alike[0] for cells_alike in list(groups.values())[:MAX_RANKED]]
+    if rank and asked:
+        picks = rank(asked)
+        for first in asked:
+            pick, reason = picks.get(first["id"], (None, ""))
+            key = (first["column"], first["value"], first["issues"][0], tuple(o["value"] for o in first["options"]))
+            for s in groups[key]:
+                if isinstance(pick, int) and 0 <= pick < len(s["options"]):
+                    s["recommended"] = pick
+                s["reason"] = str(reason or "")[:300]
 
     for n, group in enumerate(find_duplicates(output), start=1):
         rows = [p + HEADER_ROWS + 1 for p in group["positions"]]
@@ -315,16 +328,25 @@ def removed_rows(suggestions: list[dict], decisions: dict) -> dict:
     return removed
 
 
+def _by_row(resolved: dict) -> dict:
+    """The decided cells grouped by row number, so large files aren't searched once per decision."""
+    by_row = {}
+    for (row, column), (action, value) in resolved.items():
+        by_row.setdefault(row, []).append((column, action, value))
+    return by_row
+
+
 def apply_to_review(review: dict, suggestions: list[dict], decisions: dict) -> dict:
     """The review as the page shows it, with every decision applied, plus the suggestions and their status."""
     review = json.loads(json.dumps(review))  # a copy: the saved review stays as the run left it
     resolved = resolved_cells(suggestions, decisions)
     removed = removed_rows(suggestions, decisions)
+    by_row = _by_row(resolved)
     columns = review["columns"]
     for row in review["rows"]:
         row["approved"], row["kept"] = {}, []
-        for (number, column), (action, value) in resolved.items():
-            if row["row"] != number or column not in columns:
+        for column, action, value in by_row.get(row["row"], []):
+            if column not in columns:
                 continue
             row["issues"].pop(column, None)
             if action == "accept":
@@ -349,18 +371,21 @@ def decided_output_csv(output_csv: str, review: dict, suggestions: list[dict], d
     df = pd.read_csv(io.StringIO(output_csv), dtype=str, keep_default_na=False)
     resolved = resolved_cells(suggestions, decisions)
     removed = removed_rows(suggestions, decisions)
+    resolved_keys = set(resolved)
     remaining = {}
-    for e in apply_to_review(review, suggestions, decisions)["report"]:
-        remaining.setdefault(e["row"], []).append(e["issue"])
-    keep = []
-    for position in range(len(df)):
-        number = position + HEADER_ROWS + 1
-        for (row, column), (action, value) in resolved.items():
-            if row == number and action == "accept" and column in df.columns:
+    for e in review["report"]:
+        if (e["row"], e["column"]) not in resolved_keys:
+            remaining.setdefault(e["row"], []).append(e["issue"])
+    for number, cells in _by_row(resolved).items():
+        position = number - HEADER_ROWS - 1
+        if not 0 <= position < len(df):
+            continue
+        for column, action, value in cells:
+            if action == "accept" and column in df.columns:
                 df.iat[position, df.columns.get_loc(column)] = value
-        if "_errors" in df.columns and any(row == number for row, _ in resolved):
+        if "_errors" in df.columns:
             df.iat[position, df.columns.get_loc("_errors")] = "; ".join(remaining.get(number, []))
-        keep.append(number not in removed)
+    keep = [position + HEADER_ROWS + 1 not in removed for position in range(len(df))]
     out = io.StringIO()
     df[keep].to_csv(out, index=False)
     return out.getvalue()
