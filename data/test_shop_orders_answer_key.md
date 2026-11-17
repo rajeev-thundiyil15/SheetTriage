@@ -1,6 +1,6 @@
 # Test shop orders: answer key
 
-File: data/test_shop_orders.csv (40 orders, 10 columns). Schema: schema/shop_orders.json.
+File: data/test_shop_orders.csv (40 orders, 10 columns, 27 planted problems including one duplicate row). Schema: schema/shop_orders.json.
 Row numbers match a spreadsheet and the review page (the header is row 1).
 
 Upload the schema file on the schema page (Advanced, then choose `schema/shop_orders.json`). The page's own draft is looser: it reads `quantity` as a decimal and sets no maximums, so it would miss the problems in rows 18, 27, 30 and 32.
@@ -39,12 +39,14 @@ order_id is a whole number. customer is required. email is required and must loo
 | 36 | product | Moniter | close typo of Monitor | Fixed |
 | 38 | payment_method | Bitcoin | not an accepted payment method | Flagged |
 | 40 | order_date | (blank) | required date is blank | Flagged |
+| 33 | (whole row) | copy of row 10 | same order twice under a new order_id | Offered as a duplicate to remove |
 
 ## What to check
 
 - **19 rows flagged** in Clean + report mode: 3, 6, 9, 11, 12, 13, 16, 17, 18, 21, 22, 24, 27, 28, 30, 32, 34, 38 and 40. Every row stays in the output.
 - **5 cells corrected:** rows 5, 8, 19, 25 and 36. Every other date is rewritten as YYYY-MM-DD and counted as reformatted, not corrected.
 - **Nothing guessed:** Credit Card, Laptop Stand, Returned and Bitcoin are flagged with their original text, never changed to a similar allowed value.
+- **Suggested fixes:** the Fix flagged cells tab offers a fix for the cells where one can be backed up, such as Credit Card to Card, 31/01/2026 to 2026-01-31 and €249.99 to 249.99, and offers rows 10 and 33 as duplicates. Nothing changes until you choose.
 - **Strict mode:** the output has 21 rows, and the 19 flagged rows are only in the error report.
 - **Audit mode:** nothing changes, and 24 rows are flagged: the 19 above plus the 5 fixable values (rows 5, 8, 19, 25 and 36). The dates in rows 7 and 14 are valid dates in another format, so they aren't flagged.
 

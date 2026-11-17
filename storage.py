@@ -267,6 +267,20 @@ class Store:
         path = self.job_dir(job_id) / "review.json"
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
+    def save_suggestions(self, job_id: str, suggestions: list[dict]) -> None:
+        (self.job_dir(job_id) / "suggestions.json").write_text(json.dumps(suggestions), encoding="utf-8")
+
+    def load_suggestions(self, job_id: str) -> list[dict]:
+        path = self.job_dir(job_id) / "suggestions.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+    def load_decisions(self, job_id: str) -> dict:
+        path = self.job_dir(job_id) / "decisions.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    def save_decisions(self, job_id: str, decisions: dict) -> None:
+        (self.job_dir(job_id) / "decisions.json").write_text(json.dumps(decisions), encoding="utf-8")
+
     def finish_job(self, job_id: str, last_event: dict, **fields) -> None:
         """Saves the final status and the run's last event together, so nobody sees one without the other."""
         columns = ", ".join(f"{name} = ?" for name in fields)

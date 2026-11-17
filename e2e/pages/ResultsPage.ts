@@ -21,6 +21,7 @@ export class ResultsPage {
   readonly copyLink: Locator;
   readonly deleteButton: Locator;
   readonly allColumnsToggle: Locator;
+  readonly fixesTab: Locator;
 
   constructor(readonly page: Page) {
     this.title = page.locator('#results-title');
@@ -28,6 +29,7 @@ export class ResultsPage {
     this.copyLink = page.getByRole('button', { name: 'Copy link' });
     this.deleteButton = page.locator('#delete-job-btn');
     this.allColumnsToggle = page.locator('#toggle-all-columns');
+    this.fixesTab = page.locator('#tab-fixes');
     this.status = page.locator('#status-badge');
     this.headline = page.locator('#summary-headline');
     this.log = page.locator('#log-body');

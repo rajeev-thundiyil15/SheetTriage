@@ -23,6 +23,7 @@ shutil.rmtree(DATA_DIR, ignore_errors=True)
 os.environ["DATA_DIR"] = str(DATA_DIR)
 
 import app as web  # noqa: E402
+import suggestions  # noqa: E402
 import tools  # noqa: E402
 from agent import derive_report_path  # noqa: E402
 
@@ -73,6 +74,14 @@ def fake_run_agent(df, schema, output_path, mode, on_log):
 
 
 web.run_agent = fake_run_agent
+
+
+def fake_rank(cells, on_log=None):
+    """Recommends the first option the code found for each cell, as Claude would but without a call."""
+    return {c["id"]: (0, f"Scripted: '{c['options'][0]['value']}' is the most likely fix.") for c in cells}
+
+
+suggestions.rank_with_ai = fake_rank
 
 if __name__ == "__main__":
     uvicorn.run(web.app, host="127.0.0.1", port=PORT, log_level="warning")

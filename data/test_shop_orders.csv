@@ -30,7 +30,7 @@ order_id,customer,email,product,unit_price,quantity,order_date,status,payment_me
 5029,Ivan Novak,ivan.novak@example.org,Headset,4500.00,3,02/01/2026,Pending,PayPal,
 5030,Jade Sato,jade.sato@example.org,Webcam,64.95,2,03/08/2026,Shipped,Bank Transfer,
 5031,Kofi Khan,kofi.khan@example.org,Laptop,1199.00,1.5,01/15/2026,Delivered,Card,
-5032,Lena Moreau,lena.moreau@example.org,Monitor,249.99,6,02/22/2026,Cancelled,PayPal,
+5032,Ivan Novak,ivan.novak@example.org,Keyboard,79.50,5,03/01/2026,Pending,Bank Transfer,
 5033,Marco Reid,marco.reid@example.org,Keyboard,79.50,5,02/29/2026,Pending,Bank Transfer,
 5034,Nina Okafor,nina.okafor@example.org,Mouse,29.99,4,01/08/2026,Shipped,Card,
 5035,Omar Lopez,omar.lopez@example.org,Moniter,89.00,3,02/15/2026,Delivered,PayPal,

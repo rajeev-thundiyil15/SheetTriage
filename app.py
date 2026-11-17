@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 import auth  # noqa: E402  (reads AUTH_MODE, so .env has to be loaded first)
+import suggestions as fixes  # noqa: E402
 import tools  # noqa: E402
 from agent import run_agent, derive_report_path  # noqa: E402
 from csv_input import normalize_csv  # noqa: E402
@@ -422,6 +423,26 @@ async def infer_schema_endpoint(
 
 # ── Runs ──
 
+def _prepare_suggestions(job_store: Store, job_id: str, output_path: Path, review: dict,
+                         schema: DataSchema, mode: str, on_log) -> None:
+    """Suggested fixes for the flagged cells, and likely duplicates, for the person to approve.
+
+    Strict mode has already left the flagged rows out of the file, so there's nothing to fix there."""
+    if mode == "strict":
+        return
+    try:
+        output = pd.read_csv(output_path, dtype=str, keep_default_na=False)
+        found = fixes.build_suggestions(output, review["report"], schema,
+                                        rank=lambda cells: fixes.rank_with_ai(cells, on_log))
+        job_store.save_suggestions(job_id, found)
+        cells = sum(1 for f in found if f["kind"] == "cell" and f["options"])
+        copies = sum(1 for f in found if f["kind"] == "duplicate")
+        if cells or copies:
+            on_log({"type": "suggestions", "fixes": cells, "duplicates": copies})
+    except Exception as exc:
+        on_log({"type": "warning", "message": f"Suggested fixes couldn't be prepared: {exc}"})
+
+
 @app.post("/clean")
 async def clean(
     request: Request,
@@ -480,6 +501,8 @@ async def clean(
                     flagged = review["flagged_rows"]
                 except Exception as exc:
                     on_log({"type": "warning", "message": f"The review couldn't be prepared: {exc}"})
+                else:
+                    _prepare_suggestions(job_store, job_id, output_path, review, schema, mode, on_log)
             done = {"type": "done", "download_url": f"/download/{job_id}",
                     "report_url": f"/download/{job_id}?file=report"}
             job_store.finish_job(job_id, done, status="done", flagged_rows=flagged, finished_at=time.time())
@@ -534,7 +557,17 @@ async def download(request: Request, job_id: str, file: str = "csv"):
         path, filename = output_path, "output.csv"
     if not Path(path).exists():
         raise HTTPException(404, "File not ready yet")
-    return FileResponse(path, media_type="text/csv", filename=filename)
+    decisions = store.load_decisions(job_id)
+    if not decisions:
+        return FileResponse(path, media_type="text/csv", filename=filename)
+    # The person's decisions are applied on the way out; the files from the run stay as they were.
+    review, found = store.load_review(job_id), store.load_suggestions(job_id)
+    if file == "report":
+        body = fixes.decided_report_csv(review, found, decisions)
+    else:
+        body = fixes.decided_output_csv(Path(path).read_text(encoding="utf-8"), review, found, decisions)
+    return Response(body, media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.get("/review/{job_id}")
@@ -546,7 +579,50 @@ async def review(request: Request, job_id: str):
     saved = store.load_review(job_id)
     if saved is None:
         raise HTTPException(404, "This run didn't produce a file to review.")
-    return saved
+    return fixes.apply_to_review(saved, store.load_suggestions(job_id), store.load_decisions(job_id))
+
+
+def _decidable(request: Request, job_id: str) -> tuple[list[dict], dict]:
+    job = _get_job(request, job_id)
+    if job["status"] in UNFINISHED:
+        raise HTTPException(409, "The agent is still running.")
+    found = store.load_suggestions(job_id)
+    if store.load_review(job_id) is None or not found:
+        raise HTTPException(404, "This run has nothing to decide.")
+    return found, store.load_decisions(job_id)
+
+
+@app.post("/api/jobs/{job_id}/decisions")
+async def decide(request: Request, job_id: str):
+    """Records one decision: use a suggested fix, keep the value, remove a copy, or leave it."""
+    found, decisions = _decidable(request, job_id)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Expected JSON.")
+    suggestion = next((f for f in found if f["id"] == body.get("id")), None)
+    if suggestion is None:
+        raise HTTPException(404, "That suggestion doesn't exist.")
+    decision = fixes.check_decision(suggestion, body)
+    if decision is None:
+        raise HTTPException(400, "That isn't one of the choices for this suggestion.")
+    if decision["action"] == "leave":
+        decisions.pop(suggestion["id"], None)
+    else:
+        decisions[suggestion["id"]] = decision
+    store.save_decisions(job_id, decisions)
+    return fixes.apply_to_review(store.load_review(job_id), found, decisions)
+
+
+@app.post("/api/jobs/{job_id}/decisions/recommended")
+async def accept_recommended(request: Request, job_id: str):
+    """Uses every recommended fix that hasn't been decided yet."""
+    found, decisions = _decidable(request, job_id)
+    for f in found:
+        if f["kind"] == "cell" and f["recommended"] is not None and f["id"] not in decisions:
+            decisions[f["id"]] = {"action": "accept", "option": f["recommended"]}
+    store.save_decisions(job_id, decisions)
+    return fixes.apply_to_review(store.load_review(job_id), found, decisions)
 
 
 @app.get("/api/jobs")

@@ -236,7 +236,8 @@
     .review-head { padding: 16px 16px 0; }
     .review-title { font-size: 15px; font-weight: 600; }
     .review-note { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 2px; }
-    .review-tabs { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--border); }
+    .review-tabs { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+    .review-tab { white-space: nowrap; flex-shrink: 0; }
     .review-tab {
       background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
       padding: 8px 10px; font: inherit; font-size: 13px; font-weight: 500;
@@ -281,6 +282,43 @@
     .review-table th.row-number { z-index: 3; background: #f4f4f5; }
     .cell-flagged { background: #fef3c7; }
     .cell-changed { background: #dbeafe; }
+    .cell-approved { background: #dcfce7; }
+    .legend-approved { background: #dcfce7; }
+    .finding-approved { color: #166534; }
+    .finding-kept { color: var(--text-muted); }
+    .row-removed td { color: var(--text-muted); text-decoration: line-through; }
+    .row-removed td.wrap { text-decoration: none; }
+
+    /* ── Fix flagged cells ── */
+    .fixes-bar {
+      display: none; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg); font-size: 13px;
+    }
+    .fixes-bar.show { display: flex; }
+    .fix-list { display: flex; flex-direction: column; }
+    .fix-card { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+    .fix-card.decided { background: #fafafa; }
+    .fix-head { font-size: 12px; color: var(--text-muted); font-weight: 500; overflow-wrap: anywhere; }
+    .fix-value { font-size: 14px; overflow-wrap: anywhere; }
+    .fix-value code {
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; background: #fef3c7;
+      padding: 1px 6px; border-radius: 4px;
+    }
+    .fix-issue { font-size: 12px; color: #92400e; overflow-wrap: anywhere; }
+    .fix-reason { font-size: 13px; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+    .fix-reason strong { font-weight: 600; }
+    .fix-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fix-btn {
+      font: inherit; font-size: 12px; cursor: pointer; padding: 6px 12px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text); max-width: 100%;
+      overflow-wrap: anywhere; text-align: left;
+    }
+    .fix-btn:hover { border-color: #a1a1aa; }
+    .fix-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .fix-btn.primary:hover { background: var(--accent-hover); }
+    .fix-btn:disabled { opacity: .5; cursor: wait; }
+    .fix-done { font-size: 13px; color: #166534; font-weight: 500; overflow-wrap: anywhere; }
+    .fix-none { font-size: 12px; color: var(--text-muted); }
     .legend-flagged { background: #fef3c7; }
     .legend-changed { background: #dbeafe; }
     .finding-changed { color: #1d4ed8; }
@@ -351,6 +389,7 @@
           <div class="review-tabs">
             <button class="review-tab active" id="tab-data" onclick="setReviewTab('data')"></button>
             <button class="review-tab" id="tab-report" onclick="setReviewTab('report')"></button>
+            <button class="review-tab" id="tab-fixes" onclick="setReviewTab('fixes')" style="display:none"></button>
           </div>
         </div>
         <div class="review-tools">
@@ -361,7 +400,9 @@
         <div class="review-legend" id="review-legend">
           <span><span class="legend-swatch legend-flagged"></span>Flagged for review</span>
           <span><span class="legend-swatch legend-changed"></span>Corrected by the agent</span>
+          <span><span class="legend-swatch legend-approved"></span>Fixed by you</span>
         </div>
+        <div class="fixes-bar" id="fixes-bar"></div>
         <div class="review-scroll" id="review-scroll"></div>
         <div class="review-pager">
           <span id="review-count"></span>
@@ -584,10 +625,15 @@
     try {
       const res = await fetch(`/review/${encodeURIComponent(jobId)}`);
       if (!res.ok) return;
-      reviewData = await res.json();
+      showReview(await res.json(), false);
     } catch (e) {
       return;
     }
+  }
+
+  // Draws the review. After a decision it's drawn again in place, on the same tab and page.
+  function showReview(data, inPlace) {
+    reviewData = data;
     const d = reviewData;
     document.getElementById('tab-data').textContent = `Cleaned data (${d.rows_in_output.toLocaleString()})`;
     document.getElementById('tab-report').textContent = `Error report (${d.report.length.toLocaleString()})`;
@@ -595,13 +641,26 @@
       ? `${d.rows_in_output.toLocaleString()} of ${d.rows_in_original.toLocaleString()} rows are in your output. The ${d.flagged_rows.toLocaleString()} flagged rows were left out and are listed in the error report.`
       : `${d.flagged_rows.toLocaleString()} rows flagged and ${d.changed_cells.toLocaleString()} cells corrected, across all ${d.rows_in_output.toLocaleString()} rows.`
         + (d.reformatted_cells ? ` ${d.reformatted_cells.toLocaleString()} more cells were rewritten in a standard format with the same value, such as dates as YYYY-MM-DD.` : '')
-        + ' Row numbers match your original file.';
+        + ' Row numbers match your original file.'
+        + decisionsNote(d);
     issueCounts = {};
     for (const entry of d.report) issueCounts[entry.column] = (issueCounts[entry.column] || 0) + 1;
-    shownColumns = new Set(reviewColumns());
+    if (!inPlace) shownColumns = new Set(reviewColumns());
     renderColumnToggles();
+    const found = d.suggestions || [];
+    const fixesTab = document.getElementById('tab-fixes');
+    fixesTab.style.display = found.length ? '' : 'none';
+    fixesTab.textContent = `Fix flagged cells (${found.filter(f => !f.decision).length.toLocaleString()})`;
     document.getElementById('review-panel').classList.add('show');
-    setReviewTab('data');
+    if (inPlace) renderReview(); else setReviewTab('data');
+  }
+
+  function decisionsNote(d) {
+    const parts = [];
+    if (d.approved_cells) parts.push(`fixed ${d.approved_cells.toLocaleString()} ${d.approved_cells === 1 ? 'cell' : 'cells'}`);
+    if (d.kept_cells) parts.push(`kept ${d.kept_cells.toLocaleString()} ${d.kept_cells === 1 ? 'value' : 'values'} as correct`);
+    if (d.removed_rows) parts.push(`removed ${d.removed_rows.toLocaleString()} duplicate ${d.removed_rows === 1 ? 'row' : 'rows'}`);
+    return parts.length ? ` You ${parts.join(', ')}; both downloads include your changes.` : '';
   }
 
   // Every column in the output, plus any that only appear in the report, in file order.
@@ -652,6 +711,7 @@
     reviewPage = 0;
     document.getElementById('tab-data').classList.toggle('active', tab === 'data');
     document.getElementById('tab-report').classList.toggle('active', tab === 'report');
+    document.getElementById('tab-fixes').classList.toggle('active', tab === 'fixes');
     document.getElementById('review-legend').style.display = tab === 'data' ? 'flex' : 'none';
     document.getElementById('review-search').value = '';
 
@@ -697,17 +757,35 @@
   function dataRow(row) {
     const tr = document.createElement('tr');
     tr.append(reviewCell(row.row ?? '', 'row-number'));
+    const approved = row.approved || {};
+    if (row.removed_as_copy_of) tr.className = 'row-removed';
     reviewData.columns.forEach((column, i) => {
       if (!shownColumns.has(column)) return;
       const flagged = row.issues[column];
       const changed = row.changes[column];
-      const className = flagged ? 'cell-flagged' : changed !== undefined ? 'cell-changed' : '';
-      const title = flagged ? flagged.join('; ') : changed !== undefined ? `Was: ${changed}` : row.values[i];
+      const mine = approved[column];
+      const className = flagged ? 'cell-flagged' : mine !== undefined ? 'cell-approved' : changed !== undefined ? 'cell-changed' : '';
+      const title = flagged ? flagged.join('; ')
+        : mine !== undefined ? `You fixed this. Was: ${mine}`
+        : changed !== undefined ? `Was: ${changed}` : row.values[i];
       tr.append(reviewCell(row.values[i], className, title));
     });
 
     const findings = document.createElement('td');
     findings.className = 'wrap';
+    const finding = (className, text) => {
+      const line = document.createElement('div');
+      line.className = className;
+      line.textContent = text;
+      findings.append(line);
+    };
+    if (row.removed_as_copy_of) finding('finding-kept', `Removed: a copy of row ${row.removed_as_copy_of}`);
+    for (const [column, was] of Object.entries(approved)) {
+      if (shownColumns.has(column)) finding('finding-approved', `${column}: fixed by you, was "${was}"`);
+    }
+    for (const column of row.kept || []) {
+      if (shownColumns.has(column)) finding('finding-kept', `${column}: kept as is, you said it's correct`);
+    }
     for (const [column, was] of Object.entries(row.changes)) {
       if (!shownColumns.has(column)) continue;
       const line = document.createElement('div');
@@ -750,8 +828,14 @@
       items = reviewData.rows.filter(r =>
         (filter === 'all'
           || (filter === 'flagged' && inShown(Object.keys(r.issues)))
-          || (filter === 'changed' && inShown(Object.keys(r.changes))))
+          || (filter === 'changed' && inShown([...Object.keys(r.changes), ...Object.keys(r.approved || {})])))
         && (!search || r.values.filter((_, i) => shownColumns.has(reviewData.columns[i])).join(' ').toLowerCase().includes(search)));
+    } else if (reviewTab === 'fixes') {
+      noun = 'items';
+      build = fixCard;
+      items = (reviewData.suggestions || []).filter(f =>
+        (f.kind === 'duplicate' || shownColumns.has(f.column))
+        && (!search || `${f.column || ''} ${f.value || ''} ${(f.rows || [f.row]).join(' ')}`.toLowerCase().includes(search)));
     } else {
       noun = 'issues';
       headers = ['Row', 'Column', 'Value', 'Issue', 'Row ID'];
@@ -767,7 +851,13 @@
     const pageItems = items.slice(start, start + REVIEW_PAGE_SIZE);
 
     const scroll = document.getElementById('review-scroll');
-    if (pageItems.length) {
+    renderFixesBar();
+    if (pageItems.length && reviewTab === 'fixes') {
+      const list = document.createElement('div');
+      list.className = 'fix-list';
+      list.append(...pageItems.map(build));
+      scroll.replaceChildren(list);
+    } else if (pageItems.length) {
       scroll.replaceChildren(reviewTable(headers, pageItems.map(build)));
     } else {
       const empty = document.createElement('div');
@@ -786,6 +876,127 @@
       : `0 ${noun}`;
     document.getElementById('review-prev').disabled = reviewPage === 0;
     document.getElementById('review-next').disabled = reviewPage >= pages - 1;
+  }
+
+  function fixButton(text, onClick, primary) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = primary ? 'fix-btn primary' : 'fix-btn';
+    button.textContent = text;
+    button.onclick = onClick;
+    return button;
+  }
+
+  function line(className, text) {
+    const div = document.createElement('div');
+    div.className = className;
+    div.textContent = text;
+    return div;
+  }
+
+  // One flagged cell or one group of likely duplicates, with the choices for it.
+  // Everything shown comes from the uploaded file or the server, so it only goes in as text.
+  function fixCard(f) {
+    const card = document.createElement('div');
+    card.className = f.decision ? 'fix-card decided' : 'fix-card';
+    card.dataset.suggestion = f.id;
+    const actions = document.createElement('div');
+    actions.className = 'fix-actions';
+    const undo = () => fixButton('Undo', () => decide(f.id, 'leave'));
+
+    if (f.kind === 'duplicate') {
+      const copies = f.rows.slice(1);
+      card.append(line('fix-head', `Rows ${f.rows.join(', ')}`), line('fix-value', 'These rows look like the same record.'), line('fix-reason', f.reason));
+      if (f.decision && f.decision.action === 'remove') {
+        card.append(line('fix-done', `Removed row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}. Row ${f.rows[0]} is kept.`));
+        actions.append(undo());
+      } else if (f.decision) {
+        card.append(line('fix-done', 'Marked as different records. All rows are kept.'));
+        actions.append(undo());
+      } else {
+        actions.append(
+          fixButton(`Remove row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}`, () => decide(f.id, 'remove'), true),
+          fixButton("They're different", () => decide(f.id, 'different')));
+      }
+      card.append(actions);
+      return card;
+    }
+
+    const value = document.createElement('div');
+    value.className = 'fix-value';
+    const code = document.createElement('code');
+    code.textContent = f.value;
+    value.append(code);
+    card.append(line('fix-head', `Row ${f.row} · ${f.column}`), value, line('fix-issue', f.issues.join('; ')));
+
+    if (f.decision) {
+      const chosen = f.decision.action === 'accept'
+        ? `Changed to "${f.options[f.decision.option].value}".`
+        : `Kept as "${f.value}". You said it's correct.`;
+      card.append(line('fix-done', chosen));
+      actions.append(undo());
+    } else {
+      if (f.recommended !== null && f.recommended !== undefined) {
+        const reason = document.createElement('div');
+        reason.className = 'fix-reason';
+        const label = document.createElement('strong');
+        label.textContent = 'Suggested: ';
+        reason.append(label, f.reason || f.options[f.recommended].note);
+        card.append(reason);
+      } else if (f.options.length) {
+        card.append(line('fix-none', f.reason || 'Not sure which is right. Pick one, or keep the value if it is correct.'));
+      } else {
+        card.append(line('fix-none', "No safe fix to suggest. Correct it in your file, or keep it if it's right."));
+      }
+      f.options.forEach((option, i) => {
+        const button = fixButton(`Use "${option.value}"`, () => decide(f.id, 'accept', i), i === f.recommended);
+        button.title = option.note;
+        actions.append(button);
+      });
+      actions.append(fixButton("It's correct as is", () => decide(f.id, 'keep')));
+    }
+    card.append(actions);
+    return card;
+  }
+
+  function renderFixesBar() {
+    const bar = document.getElementById('fixes-bar');
+    const found = reviewData.suggestions || [];
+    bar.classList.toggle('show', reviewTab === 'fixes' && found.length > 0);
+    if (reviewTab !== 'fixes') return;
+    const decided = found.filter(f => f.decision).length;
+    const ready = found.filter(f => f.kind === 'cell' && !f.decision && f.recommended !== null && f.recommended !== undefined).length;
+    const summary = document.createElement('span');
+    summary.id = 'fixes-summary';
+    summary.textContent = `${decided} of ${found.length} decided. Nothing changes until you choose, and the downloads include your choices.`;
+    const items = [summary];
+    if (ready) items.push(fixButton(`Use all ${ready} suggested ${ready === 1 ? 'fix' : 'fixes'}`, acceptRecommended, true));
+    bar.replaceChildren(...items);
+  }
+
+  async function sendDecision(url, body) {
+    document.querySelectorAll('.fix-btn').forEach(b => { b.disabled = true; });
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'That choice could not be saved.');
+      showReview(data, true);
+    } catch (e) {
+      alert(e.message);
+      renderReview();
+    }
+  }
+
+  function decide(id, action, option) {
+    return sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions`, { id, action, option });
+  }
+
+  function acceptRecommended() {
+    return sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions/recommended`);
   }
 
   function setStatus(state) {
