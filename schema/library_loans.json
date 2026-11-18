@@ -1,0 +1,16 @@
+{
+  "name": "library_loans",
+  "columns": {
+    "loan_id": {"dtype": "str", "nullable": false, "pattern": "LN-\\d{6}"},
+    "member_name": {"dtype": "str", "nullable": false},
+    "member_email": {"dtype": "str", "nullable": false, "pattern": ".+@.+\\..+"},
+    "branch": {"dtype": "str", "nullable": false, "allowed_values": ["Central", "Northside", "Riverside", "Westfield", "Harbour"]},
+    "item_type": {"dtype": "str", "nullable": false, "allowed_values": ["Book", "DVD", "Audiobook", "Magazine"]},
+    "isbn": {"dtype": "str", "nullable": false, "pattern": "\\d{13}"},
+    "borrowed_on": {"dtype": "date", "nullable": false, "date_format": "YMD"},
+    "due_days": {"dtype": "int", "nullable": false, "min_value": 7, "max_value": 28},
+    "late_fee": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 50},
+    "status": {"dtype": "str", "nullable": false, "allowed_values": ["On Loan", "Returned", "Overdue", "Lost"]},
+    "notes": {"dtype": "str", "nullable": true}
+  }
+}
