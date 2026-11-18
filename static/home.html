@@ -205,11 +205,12 @@
       <div class="outcome flagged">
         <span class="outcome-badge">Flagged for you to check</span>
         <h3>When fixing it would mean guessing</h3>
-        <p>Missing values, numbers that aren't numbers, and anything outside your rules. Each one comes with a plain reason.</p>
+        <p>Missing values, numbers that aren't numbers, anything outside your rules, and rows that look like duplicates. Each one comes with a plain reason, and where a fix can be backed up, a suggestion you can approve with one click.</p>
         <ul>
           <li>Blank email <span class="why">(only you know it)</span></li>
           <li>"call for price" <span class="why">(in a price column)</span></li>
-          <li>"Credit Card" <span class="why">(not one of your payment types)</span></li>
+          <li>"€249.99" <span class="why">(suggested: 249.99, check the currency)</span></li>
+          <li>Rows 10 and 33 <span class="why">(the same order twice)</span></li>
         </ul>
       </div>
       <div class="outcome never">
@@ -219,7 +220,8 @@
         <ul>
           <li>Make up a value to fill a gap</li>
           <li>Swap a value for a "close enough" one</li>
-          <li>Delete a row, unless you choose Strict clean</li>
+          <li>Delete a row, unless you choose Strict clean or remove a duplicate yourself</li>
+          <li>Apply a suggested fix you haven't approved</li>
           <li>Change your original file</li>
         </ul>
       </div>
@@ -254,8 +256,8 @@
       </div>
       <div class="step">
         <span class="step-num">4</span>
-        <h3>Review and download</h3>
-        <p>See flagged cells highlighted and fixes marked, then download the cleaned file and a list of everything left to check.</p>
+        <h3>Review, approve and download</h3>
+        <p>See flagged cells highlighted and fixes marked. Approve the suggested fixes you agree with, remove duplicate rows, then download the cleaned file and a list of anything left to check.</p>
       </div>
     </div>
   </div>
@@ -323,11 +325,11 @@
       </details>
       <details>
         <summary>How is this different from asking ChatGPT or Claude to fix my file?</summary>
-        <p>A chatbot tries its best each time, which means it may quietly guess a value, drop rows from a long file, or fix things differently if you ask twice, and you'd have to compare the files to find out. In SheetTriage the rules are enforced by code: a fix that would be a guess can't be saved, every row is kept, every change and flag is marked with a reason, and the same file gives the same result every time. The AI only sees your column names, the first few rows and the values that break a rule, not the whole file. A chatbot is still the better choice for judgement calls, like working out a missing country from a city, or for reshaping and exploring data.</p>
+        <p>A chatbot tries its best each time, which means it may quietly guess a value, drop rows from a long file, or fix things differently if you ask twice, and you'd have to compare the files to find out. In SheetTriage the rules are enforced by code: a fix that would be a guess can't be saved unless you approve it, every row is kept, every change and flag is marked with a reason, and the same file gives the same result every time. The AI only sees your column names, the first few rows and the values that break a rule, not the whole file. A chatbot is still the better choice for judgement calls, like working out a missing country from a city, or for reshaping and exploring data.</p>
       </details>
       <details>
         <summary>What do I do with the flagged rows?</summary>
-        <p>Each one says what's wrong. Correct them in your original spreadsheet and run it again, or, if a flagged value is actually fine (say you've started accepting a new payment type), add it to the allowed values on the rules page.</p>
+        <p>Open the Fix flagged cells tab on the results page. For each one you can use a suggested fix, say the value is correct as it is (say you've started accepting a new payment type), or leave it flagged, one at a time or all the suggested fixes at once. Both downloads include your choices. Anything with no safe fix, like a blank email, still needs correcting in your file.</p>
       </details>
       <details>
         <summary>Will it delete my data?</summary>

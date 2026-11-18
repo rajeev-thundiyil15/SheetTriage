@@ -18,6 +18,7 @@ Built with Python, FastAPI, pandas and Claude Haiku 4.5 (tool use), with pytest 
 2. **Confirm the schema.** SheetTriage scans the file and drafts the rules (types, allowed values, date order, required columns). It only asks about things a wrong guess would get wrong, and pre-selects its suggestion. You can add rules in plain English.
 3. **Run the agent.** Claude works through the file with a set of pandas tools, column by column, while you watch the progress live.
 4. **Review the results** on the page: flagged cells highlighted, corrections marked, an error report you can filter, and both files to download.
+5. **Approve suggested fixes.** For flagged cells where a fix can be backed up, Claude recommends one with a reason, and duplicate rows are offered for removal. Nothing changes until you choose, and the downloads include your choices.
 
 | Mode | What happens to your data |
 |---|---|
@@ -60,7 +61,15 @@ The schema page is plain Python (`schema_profile.py`). It turns a guess into a q
 
 Validation and fixing are deterministic pandas code. The model only decides which tool to call next, and Haiku 4.5 does that reliably at a fraction of the price of larger models. Measured costs are below.
 
-### 6. Private by default, cheap to run
+### 6. The AI recommends; you approve
+
+Fixing everything automatically would mean guessing, and flagging everything leaves the person with a list of chores. So for each flagged cell the code works out the fixes it can back up: the closest allowed values, the other reading of a date, the last day of the month for an impossible date, a number without its currency sign. Claude recommends one with a plain reason, or says it isn't sure, and the person decides. Claude can only pick from the options the code found, so a recommendation can't be an invented value.
+
+- **Duplicates** are found by code alone: rows that match in every column except an ID column, ignoring case and spaces.
+- **Cells with the same value share one question to Claude.** On a 30,000-row test file, 712 fixable cells needed 57 questions, so suggestions cost a fraction of the run.
+- **Decisions are applied on the way out.** The run's own files stay as they were; the review, the cleaned CSV and the error report show the person's choices.
+
+### 7. Private by default, cheap to run
 
 - **Every run belongs to someone.** Uploads, runs and results are saved in SQLite plus files on a Railway volume, each owned by a signed-in account or by the browser that made it. Every page, review and download checks the owner, and anyone else is told the run doesn't exist.
 - **Signing in is optional.** Without it, results are kept for an hour in that browser. Signing in with Google keeps them for 7 days in My files, on any device. SheetTriage never stores passwords.
@@ -72,8 +81,8 @@ Validation and fixing are deterministic pandas code. The model only decides whic
 
 ## Testing
 
-- **235 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages, plus saved runs, who can open them, sign-in (including forged and expired Google tokens), run limits, deleting, and two runs at once. None call the API.
-- **18 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema, results and My files pages, and the account menu:
+- **277 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages, plus saved runs, who can open them, sign-in (including forged and expired Google tokens), run limits, deleting, two runs at once, and suggested fixes: the options for each kind of problem, recommendations outside the options being ignored, duplicates, decisions and the downloads that follow them. None call the API.
+- **20 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema, results and My files pages, and the account menu:
   - upload to review;
   - refreshing the results page;
   - the demo button from start to finish;
@@ -85,6 +94,8 @@ Validation and fixing are deterministic pandas code. The model only decides whic
   - a run that fails partway;
   - two people running files at the same time;
   - running out of free runs;
+  - turning columns on and off in the review;
+  - approving suggested fixes, keeping a value and removing a duplicate, with the download following;
   - and, on a second test server with sign-in turned on: a visitor cleaning a file without signing in, a signed-in run saved to My files, another account opening your link, runs moving to the account on sign-in, deleting a run, deleting an account, and My files at phone width.
 - **3 Cucumber scenarios** in plain English ([`e2e/features/`](e2e/features/clean-a-file.feature)), run by playwright-bdd with the same page objects: the demo from start to finish, a value that breaks a rule being flagged rather than changed, and an unreadable file being refused.
 - **GitHub Actions** runs all of these and a TypeScript check on every push, keeps the Playwright report and traces, and publishes the latest report from master to [GitHub Pages](https://rajeev-thundiyil15.github.io/SheetTriage/).
@@ -159,11 +170,12 @@ uv run --no-project --with-requirements requirements.txt python main.py data/tes
 ├── schema_profile.py    # Drafts the schema and its questions without an API call
 ├── schema_infer.py      # Applies plain-English rules with one Claude call
 ├── review.py            # Lines the output up with the original for the review page
+├── suggestions.py       # Suggested fixes for flagged cells and likely duplicates, and applying decisions
 ├── schema.py            # Pydantic schema models
 ├── main.py              # Command-line entry point
 ├── static/              # Pages: home, upload, schema, results, My files, sign-in, privacy, terms, plus the demo CSV
 ├── schema/              # Example schemas (registrations matches the test data)
-├── data/                # 40-row test file and its answer key
+├── data/                # Test files with answer keys, and a generator for large shop orders files
 ├── tests/               # pytest suite
 ├── e2e/                 # Playwright specs, Cucumber features, page objects and the scripted agent server
 └── docs/screenshots/
