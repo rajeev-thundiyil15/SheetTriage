@@ -27,7 +27,7 @@ from tools import NUMERIC_DATE, _parse_date
 HEADER_ROWS = 1
 MAX_RANKED = 200          # distinct values sent to Claude in one run; cells sharing a value share the answer
 MAX_OPTIONS = 3
-SIMILAR_ENOUGH = 0.5      # looser than the automatic typo rule: these are options for a person to pick
+SIMILAR_ENOUGH = 0.6      # looser than the automatic typo rule: these are options for a person to pick
 NEAR_THE_BEST = 0.25      # and only those nearly as close as the best one
 
 NUMBER_WORDS = {w: i for i, w in enumerate(
@@ -57,9 +57,16 @@ def _allowed_options(value: str, rules, counts: Counter) -> list[dict]:
     scored = sorted(
         ((SequenceMatcher(None, value.casefold(), str(a).casefold()).ratio(), str(a)) for a in allowed),
         reverse=True)
-    best = scored[0][0] if scored else 0
+    # A whole allowed value inside the cell counts too: Card in "Credit Card", Laptop in "Laptop Stand".
+    # Spelling overlap alone isn't enough: Scotland and Italy share letters with Ireland.
+    words = set(re.findall(r"\w+", value.casefold()))
+    contained = [(1.0, str(a)) for a in allowed
+                 if set(re.findall(r"\w+", str(a).casefold())) <= words and str(a).casefold() != value.casefold()]
+    close = [(score, a) for score, a in scored if score >= SIMILAR_ENOUGH]
+    ranked = sorted(set(close) | set(contained), reverse=True)
+    best = ranked[0][0] if ranked else 0
     return [{"value": a, "note": f"a close allowed value, used {counts.get(a, 0)} times in this column"}
-            for score, a in scored[:MAX_OPTIONS] if score >= SIMILAR_ENOUGH and score >= best - NEAR_THE_BEST]
+            for score, a in ranked[:MAX_OPTIONS] if score >= best - NEAR_THE_BEST]
 
 
 def _date_options(value: str) -> list[dict]:

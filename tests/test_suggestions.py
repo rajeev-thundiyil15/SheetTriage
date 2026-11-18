@@ -36,6 +36,7 @@ def options(value, issue, column):
     ("Credit Card", "'Credit Card' not in allowed values", "payment", ["Card"]),
     ("Delivred", "'Delivred' not in allowed values", "status", ["Delivered"]),
     ("Bitcoin", "'Bitcoin' not in allowed values", "payment", []),
+    ("Bank transfer", "'Bank transfer' not in allowed values", "payment", ["Bank Transfer"]),
     ("31/01/2026", "cannot convert '31/01/2026' to date", "ordered", ["2026-01-31"]),
     ("02/29/2026", "cannot convert '02/29/2026' to date", "ordered", ["2026-02-28", "2026-03-01"]),
     ("€249.99", "cannot convert '€249.99' to float", "price", ["249.99"]),
@@ -318,3 +319,17 @@ def test_large_reviews_are_sent_compressed(client):
     response = client.get(f"/review/{job_id}", headers={"Accept-Encoding": "gzip"})
 
     assert response.headers.get("content-encoding") == "gzip"
+
+
+def test_spelling_overlap_alone_is_not_a_suggestion():
+    countries = DataSchema.model_validate({"name": "c", "columns": {
+        "country": {"dtype": "str", "allowed_values": ["UK", "Ireland", "France", "Germany", "Spain", "USA"]}}})
+    rules = countries.columns["country"]
+
+    def offered(value):
+        return [o["value"] for o in fixes.cell_options(value, f"'{value}' not in allowed values", rules, Counter())]
+
+    assert offered("Scotland") == []
+    assert offered("Italy") == []
+    assert offered("U.K.") == ["UK"]
+    assert offered("Frnace") == ["France"]

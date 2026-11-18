@@ -1,0 +1,16 @@
+{
+  "name": "hotel_bookings",
+  "columns": {
+    "booking_id": {"dtype": "int", "nullable": false},
+    "guest_name": {"dtype": "str", "nullable": false},
+    "email": {"dtype": "str", "nullable": false, "pattern": ".+@.+\\..+"},
+    "room_type": {"dtype": "str", "nullable": false, "allowed_values": ["Single", "Double", "Suite", "Family"]},
+    "nights": {"dtype": "int", "nullable": false, "min_value": 1, "max_value": 30},
+    "nightly_rate": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 1500},
+    "check_in": {"dtype": "date", "nullable": false, "date_format": "DMY"},
+    "country": {"dtype": "str", "nullable": false, "allowed_values": ["UK", "Ireland", "France", "Germany", "Spain", "USA"]},
+    "status": {"dtype": "str", "nullable": false, "allowed_values": ["Confirmed", "Checked In", "Checked Out", "Cancelled"]},
+    "booking_channel": {"dtype": "str", "nullable": false, "allowed_values": ["Website", "Phone", "Travel Agent"]},
+    "notes": {"dtype": "str", "nullable": true}
+  }
+}
