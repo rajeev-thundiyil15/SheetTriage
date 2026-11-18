@@ -319,6 +319,27 @@
     .fix-btn:disabled { opacity: .5; cursor: wait; }
     .fix-done { font-size: 13px; color: #166534; font-weight: 500; overflow-wrap: anywhere; }
     .fix-none { font-size: 12px; color: var(--text-muted); }
+    .fix-lists { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fix-list-btn {
+      font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; padding: 5px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); white-space: nowrap;
+    }
+    .fix-list-btn[aria-pressed="true"] { color: var(--text); border-color: var(--text); }
+    .fixes-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .fixes-help { width: 100%; font-size: 12px; color: var(--text-muted); }
+    .fix-rules { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--text-muted); align-items: center; }
+    .fix-rule { display: inline-flex; gap: 6px; align-items: center; padding: 3px 4px 3px 10px; border-radius: 20px; background: #eff6ff; color: #1d4ed8; }
+    .fix-rule button { font: inherit; font-size: 11px; border: 0; background: none; color: #1d4ed8; cursor: pointer; text-decoration: underline; }
+    .fix-count { font-size: 12px; color: var(--text-muted); }
+    .fix-rows { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--border); padding-top: 8px; }
+    .fix-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+    .fix-row-label { min-width: 70px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .fix-row input {
+      font: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      min-width: 0; flex: 1 1 140px; max-width: 260px;
+    }
+    .fix-row .fix-done { font-size: 12px; }
+    .fix-link { font: inherit; font-size: 12px; border: 0; background: none; color: var(--text); cursor: pointer; text-decoration: underline; padding: 0; }
     .legend-flagged { background: #fef3c7; }
     .legend-changed { background: #dbeafe; }
     .finding-changed { color: #1d4ed8; }
@@ -831,11 +852,12 @@
           || (filter === 'changed' && inShown([...Object.keys(r.changes), ...Object.keys(r.approved || {})])))
         && (!search || r.values.filter((_, i) => shownColumns.has(reviewData.columns[i])).join(' ').toLowerCase().includes(search)));
     } else if (reviewTab === 'fixes') {
-      noun = 'items';
-      build = fixCard;
-      items = (reviewData.suggestions || []).filter(f =>
-        (f.kind === 'duplicate' || shownColumns.has(f.column))
-        && (!search || `${f.column || ''} ${f.value || ''} ${(f.rows || [f.row]).join(' ')}`.toLowerCase().includes(search)));
+      noun = fixesView === 'duplicates' ? 'duplicate groups' : 'groups';
+      build = groupCard;
+      items = fixGroups().filter(g =>
+        g.list === fixesView
+        && (g.list === 'duplicates' || shownColumns.has(g.items[0].column))
+        && (!search || g.items.some(f => `${f.column || ''} ${f.value || ''} ${(f.rows || [f.row]).join(' ')}`.toLowerCase().includes(search))));
     } else {
       noun = 'issues';
       headers = ['Row', 'Column', 'Value', 'Issue', 'Row ID'];
@@ -894,66 +916,158 @@
     return div;
   }
 
-  // One flagged cell or one group of likely duplicates, with the choices for it.
-  // Everything shown comes from the uploaded file or the server, so it only goes in as text.
-  function fixCard(f) {
+  // ── Fix flagged cells: identical problems grouped, in three lists ──
+  let fixesView = 'suggested';
+  const openGroups = new Set();
+  const LIST_NAMES = { suggested: 'Suggested fixes', duplicates: 'Duplicates', input: 'Needs your input' };
+
+  // Cells with the same column, value, problem and options form one group, so 47 rows of
+  // "45 nights" are one decision rather than 47.
+  function fixGroups() {
+    const groups = new Map();
+    for (const f of reviewData.suggestions || []) {
+      const key = f.kind === 'duplicate' ? f.id : [f.column, f.value, f.issues[0], f.options.map(o => o.value).join('|')].join('\u0000');
+      if (!groups.has(key)) {
+        groups.set(key, { key, list: f.kind === 'duplicate' ? 'duplicates' : f.options.length ? 'suggested' : 'input', items: [] });
+      }
+      groups.get(key).items.push(f);
+    }
+    // Biggest groups first: they clear the most with one click.
+    return [...groups.values()].sort((a, b) => b.items.length - a.items.length);
+  }
+
+  function plural(n, one, many) { return `${n.toLocaleString()} ${n === 1 ? one : many}`; }
+
+  function rowsText(items) {
+    const rows = items.map(f => f.row);
+    const shown = rows.slice(0, 4).join(', ');
+    return rows.length > 4 ? `Rows ${shown} and ${(rows.length - 4).toLocaleString()} more` : `Row${rows.length > 1 ? 's' : ''} ${shown}`;
+  }
+
+  function decisionText(f) {
+    const d = f.decision;
+    if (!d) return '';
+    if (d.action === 'accept') return `Changed to "${f.options[d.option].value}".`;
+    if (d.action === 'edit') return `Changed to "${d.value}".`;
+    if (d.rule) return 'Kept: your rule change allows it.';
+    return `Kept as "${f.value}".`;
+  }
+
+  // A rule change that would clear this group: allow the value, or move the limit.
+  function ruleFor(f) {
+    const issue = f.issues[0];
+    if (issue.includes('not in allowed values')) return { rule: 'allow', value: f.value, label: `Allow "${f.value}" in ${f.column}` };
+    if (issue.includes('is above max')) return { rule: 'max', value: f.value, label: `Allow ${f.column} up to ${f.value}` };
+    if (issue.includes('is below min')) return { rule: 'min', value: f.value, label: `Allow ${f.column} down to ${f.value}` };
+    return null;
+  }
+
+  function groupCard(g) {
+    if (g.list === 'duplicates') return duplicateCard(g.items[0]);
+    const first = g.items[0];
+    const n = g.items.length;
+    const open = g.items.filter(f => !f.decision);
+    const card = document.createElement('div');
+    card.className = open.length ? 'fix-card' : 'fix-card decided';
+    card.dataset.group = `${first.column}:${first.value}`;
+
+    const value = document.createElement('div');
+    value.className = 'fix-value';
+    const code = document.createElement('code');
+    code.textContent = first.value;
+    value.append(code);
+    card.append(line('fix-head', `${first.column} · ${plural(n, 'row', 'rows')}`), value,
+      line('fix-issue', first.issues.join('; ')), line('fix-count', rowsText(g.items)));
+
+    const actions = document.createElement('div');
+    actions.className = 'fix-actions';
+    const ids = list => list.map(f => f.id);
+    const every = n > 1 ? ` in all ${plural(open.length, 'row', 'rows')}` : '';
+
+    if (!open.length) {
+      const texts = [...new Set(g.items.map(decisionText))];
+      card.append(line('fix-done', texts.length === 1 ? texts[0] + (n > 1 ? ` (${plural(n, 'row', 'rows')})` : '') : `All ${n} rows decided.`));
+      if (!g.items.some(f => f.decision.rule)) actions.append(fixButton(n > 1 ? 'Undo all' : 'Undo', () => bulk(ids(g.items), 'leave')));
+    } else {
+      if (open.length < n) card.append(line('fix-count', `${n - open.length} of ${n} decided.`));
+      if (first.recommended !== null && first.recommended !== undefined) {
+        const reason = document.createElement('div');
+        reason.className = 'fix-reason';
+        const label = document.createElement('strong');
+        label.textContent = 'Suggested: ';
+        reason.append(label, first.reason || first.options[first.recommended].note);
+        card.append(reason);
+      } else if (first.options.length) {
+        card.append(line('fix-none', first.reason || 'Not sure which is right. Pick one, or keep the value if it is correct.'));
+      } else {
+        card.append(line('fix-none', 'No safe fix to suggest. Type the right value for a row, keep it, or change the rule if the rule is wrong.'));
+      }
+      first.options.forEach((option, i) => {
+        const button = fixButton(`Use "${option.value}"${every}`, () => bulk(ids(open), 'accept', i), i === first.recommended);
+        button.title = option.note;
+        actions.append(button);
+      });
+      actions.append(fixButton(n > 1 ? `Keep all ${open.length}` : "It's correct as is", () => bulk(ids(open), 'keep')));
+      const rule = ruleFor(first);
+      if (rule) actions.append(fixButton(rule.label, () => changeRule(first.column, rule.rule, rule.value)));
+    }
+    if (n > 1) {
+      const shown = openGroups.has(g.key);
+      actions.append(fixButton(shown ? 'Hide rows' : 'Show rows', () => {
+        if (shown) openGroups.delete(g.key); else openGroups.add(g.key);
+        renderReview();
+      }));
+    }
+    card.append(actions);
+    if (n === 1 || openGroups.has(g.key)) card.append(rowEditors(g.items));
+    return card;
+  }
+
+  // One line per row: type the right value, keep it, or undo. Shows the first 100 rows of a group.
+  function rowEditors(items) {
+    const box = document.createElement('div');
+    box.className = 'fix-rows';
+    for (const f of items.slice(0, 100)) {
+      const row = document.createElement('div');
+      row.className = 'fix-row';
+      row.append(line('fix-row-label', `Row ${f.row}`));
+      if (f.decision) {
+        row.append(line('fix-done', decisionText(f)));
+        if (!f.decision.rule) row.append(fixButton('Undo', () => decide(f.id, 'leave')));
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Type the right value';
+        input.setAttribute('aria-label', `Right value for row ${f.row}, ${f.column}`);
+        // The server checks the value against the column's rules and says what's wrong if it doesn't fit.
+        const save = () => sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions`, { id: f.id, action: 'edit', value: input.value });
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+        row.append(input, fixButton('Save', save));
+      }
+      box.append(row);
+    }
+    if (items.length > 100) box.append(line('fix-none', `Showing the first 100 of ${items.length.toLocaleString()} rows. The rest are in "Download what's left".`));
+    return box;
+  }
+
+  function duplicateCard(f) {
     const card = document.createElement('div');
     card.className = f.decision ? 'fix-card decided' : 'fix-card';
     card.dataset.suggestion = f.id;
     const actions = document.createElement('div');
     actions.className = 'fix-actions';
-    const undo = () => fixButton('Undo', () => decide(f.id, 'leave'));
-
-    if (f.kind === 'duplicate') {
-      const copies = f.rows.slice(1);
-      card.append(line('fix-head', `Rows ${f.rows.join(', ')}`), line('fix-value', 'These rows look like the same record.'), line('fix-reason', f.reason));
-      if (f.decision && f.decision.action === 'remove') {
-        card.append(line('fix-done', `Removed row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}. Row ${f.rows[0]} is kept.`));
-        actions.append(undo());
-      } else if (f.decision) {
-        card.append(line('fix-done', 'Marked as different records. All rows are kept.'));
-        actions.append(undo());
-      } else {
-        actions.append(
-          fixButton(`Remove row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}`, () => decide(f.id, 'remove'), true),
-          fixButton("They're different", () => decide(f.id, 'different')));
-      }
-      card.append(actions);
-      return card;
-    }
-
-    const value = document.createElement('div');
-    value.className = 'fix-value';
-    const code = document.createElement('code');
-    code.textContent = f.value;
-    value.append(code);
-    card.append(line('fix-head', `Row ${f.row} · ${f.column}`), value, line('fix-issue', f.issues.join('; ')));
-
-    if (f.decision) {
-      const chosen = f.decision.action === 'accept'
-        ? `Changed to "${f.options[f.decision.option].value}".`
-        : `Kept as "${f.value}". You said it's correct.`;
-      card.append(line('fix-done', chosen));
-      actions.append(undo());
+    const copies = f.rows.slice(1);
+    card.append(line('fix-head', `Rows ${f.rows.join(', ')}`), line('fix-value', 'These rows look like the same record.'), line('fix-reason', f.reason));
+    if (f.decision && f.decision.action === 'remove') {
+      card.append(line('fix-done', `Removed row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}. Row ${f.rows[0]} is kept.`));
+      actions.append(fixButton('Undo', () => decide(f.id, 'leave')));
+    } else if (f.decision) {
+      card.append(line('fix-done', 'Marked as different records. All rows are kept.'));
+      actions.append(fixButton('Undo', () => decide(f.id, 'leave')));
     } else {
-      if (f.recommended !== null && f.recommended !== undefined) {
-        const reason = document.createElement('div');
-        reason.className = 'fix-reason';
-        const label = document.createElement('strong');
-        label.textContent = 'Suggested: ';
-        reason.append(label, f.reason || f.options[f.recommended].note);
-        card.append(reason);
-      } else if (f.options.length) {
-        card.append(line('fix-none', f.reason || 'Not sure which is right. Pick one, or keep the value if it is correct.'));
-      } else {
-        card.append(line('fix-none', "No safe fix to suggest. Correct it in your file, or keep it if it's right."));
-      }
-      f.options.forEach((option, i) => {
-        const button = fixButton(`Use "${option.value}"`, () => decide(f.id, 'accept', i), i === f.recommended);
-        button.title = option.note;
-        actions.append(button);
-      });
-      actions.append(fixButton("It's correct as is", () => decide(f.id, 'keep')));
+      actions.append(
+        fixButton(`Remove row${copies.length > 1 ? 's' : ''} ${copies.join(', ')}`, () => decide(f.id, 'remove'), true),
+        fixButton("They're different", () => decide(f.id, 'different')));
     }
     card.append(actions);
     return card;
@@ -964,14 +1078,71 @@
     const found = reviewData.suggestions || [];
     bar.classList.toggle('show', reviewTab === 'fixes' && found.length > 0);
     if (reviewTab !== 'fixes') return;
-    const decided = found.filter(f => f.decision).length;
+    const groups = fixGroups();
+    const openIn = list => groups.filter(g => g.list === list).reduce((sum, g) => sum + g.items.filter(f => !f.decision).length, 0);
+
+    const lists = document.createElement('div');
+    lists.className = 'fix-lists';
+    for (const list of ['suggested', 'duplicates', 'input']) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'fix-list-btn';
+      button.dataset.list = list;
+      button.setAttribute('aria-pressed', String(fixesView === list));
+      button.textContent = `${LIST_NAMES[list]} (${openIn(list).toLocaleString()})`;
+      button.onclick = () => { fixesView = list; reviewPage = 0; renderReview(); };
+      lists.append(button);
+    }
+
+    const tools = document.createElement('div');
+    tools.className = 'fixes-tools';
     const ready = found.filter(f => f.kind === 'cell' && !f.decision && f.recommended !== null && f.recommended !== undefined).length;
-    const summary = document.createElement('span');
-    summary.id = 'fixes-summary';
-    summary.textContent = `${decided} of ${found.length} decided. Nothing changes until you choose, and the downloads include your choices.`;
-    const items = [summary];
-    if (ready) items.push(fixButton(`Use all ${ready} suggested ${ready === 1 ? 'fix' : 'fixes'}`, acceptRecommended, true));
+    if (fixesView === 'suggested' && ready) tools.append(fixButton(`Use all ${ready.toLocaleString()} suggested ${ready === 1 ? 'fix' : 'fixes'}`, acceptRecommended, true));
+    const copies = found.filter(f => f.kind === 'duplicate' && !f.decision);
+    if (fixesView === 'duplicates' && copies.length) tools.append(fixButton(`Remove all ${copies.length.toLocaleString()} copies`, () => bulk(copies.map(f => f.id), 'remove'), true));
+    const left = document.createElement('a');
+    left.className = 'fix-btn';
+    left.id = 'download-remaining';
+    left.href = `/download/${encodeURIComponent(jobId)}?file=remaining`;
+    left.setAttribute('download', 'still_to_fix.csv');
+    left.textContent = "Download what's left";
+    tools.append(left);
+
+    const help = line('fixes-help', {
+      suggested: 'Each card is one problem, with every row that has it. Nothing changes until you choose, and both downloads include your choices.',
+      duplicates: 'Rows that match in every column except an ID. Removing keeps the first one.',
+      input: "No safe fix exists for these. Keep the value, type the right one for a row, or change the rule if it's the rule that's wrong.",
+    }[fixesView]);
+    help.id = 'fixes-summary';
+
+    const items = [lists, tools, help];
+    if ((reviewData.rules || []).length) {
+      const rules = document.createElement('div');
+      rules.className = 'fix-rules';
+      rules.append('Rule changes:');
+      for (const r of reviewData.rules) {
+        const chip = document.createElement('span');
+        chip.className = 'fix-rule';
+        const text = r.rule === 'allow' ? `${r.column} allows "${r.value}"` : `${r.column} ${r.rule === 'max' ? 'up to' : 'down to'} ${r.value}`;
+        chip.append(`${text} (${plural(r.cells, 'cell', 'cells')})`);
+        const undo = document.createElement('button');
+        undo.type = 'button';
+        undo.textContent = 'Undo';
+        undo.onclick = () => sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions/rule/undo`, { id: r.id });
+        chip.append(undo);
+        rules.append(chip);
+      }
+      items.push(rules);
+    }
     bar.replaceChildren(...items);
+  }
+
+  function bulk(ids, action, option) {
+    return sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions/bulk`, { ids, action, option });
+  }
+
+  function changeRule(column, rule, value) {
+    return sendDecision(`/api/jobs/${encodeURIComponent(jobId)}/decisions/rule`, { column, rule, value });
   }
 
   async function sendDecision(url, body) {

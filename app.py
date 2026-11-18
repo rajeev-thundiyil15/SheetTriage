@@ -557,11 +557,20 @@ async def download(request: Request, job_id: str, file: str = "csv"):
     output_path = str(store.output_path(job_id))
     if file == "report":
         path, filename = derive_report_path(output_path), "error_report.csv"
+    elif file == "remaining":
+        path, filename = output_path, "still_to_fix.csv"
     else:
         path, filename = output_path, "output.csv"
     if not Path(path).exists():
         raise HTTPException(404, "File not ready yet")
     decisions = store.load_decisions(job_id)
+    if file == "remaining":
+        review, found = store.load_review(job_id), store.load_suggestions(job_id)
+        if review is None:
+            raise HTTPException(404, "This run didn't produce a file to review.")
+        body = fixes.remaining_csv(Path(path).read_text(encoding="utf-8"), review, found, decisions)
+        return Response(body, media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="still_to_fix.csv"'})
     if not decisions:
         return FileResponse(path, media_type="text/csv", filename=filename)
     # The person's decisions are applied on the way out; the files from the run stay as they were.
@@ -596,26 +605,107 @@ def _decidable(request: Request, job_id: str) -> tuple[list[dict], dict]:
     return found, store.load_decisions(job_id)
 
 
-@app.post("/api/jobs/{job_id}/decisions")
-async def decide(request: Request, job_id: str):
-    """Records one decision: use a suggested fix, keep the value, remove a copy, or leave it."""
-    found, decisions = _decidable(request, job_id)
+async def _json(request: Request) -> dict:
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(400, "Expected JSON.")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected JSON.")
+    return body
+
+
+def _column_rules(request: Request, job_id: str, column: str):
+    schema = DataSchema.model_validate(_get_job(request, job_id)["schema"])
+    return schema.columns.get(column)
+
+
+def _record(job_id: str, found: list[dict], decisions: dict) -> dict:
+    store.save_decisions(job_id, decisions)
+    return fixes.apply_to_review(store.load_review(job_id), found, decisions)
+
+
+@app.post("/api/jobs/{job_id}/decisions")
+async def decide(request: Request, job_id: str):
+    """Records one decision: use a suggested fix, type a value, keep the value, remove a copy, or leave it."""
+    found, decisions = _decidable(request, job_id)
+    body = await _json(request)
     suggestion = next((f for f in found if f["id"] == body.get("id")), None)
     if suggestion is None:
         raise HTTPException(404, "That suggestion doesn't exist.")
-    decision = fixes.check_decision(suggestion, body)
+    if body.get("action") == "edit" and suggestion["kind"] == "cell":
+        rules = _column_rules(request, job_id, suggestion["column"])
+        _, problem = fixes.check_value(body.get("value"), rules)
+        if problem:
+            raise HTTPException(400, problem)
+        decision = fixes.check_decision(suggestion, body, rules)
+    else:
+        decision = fixes.check_decision(suggestion, body)
     if decision is None:
         raise HTTPException(400, "That isn't one of the choices for this suggestion.")
     if decision["action"] == "leave":
         decisions.pop(suggestion["id"], None)
     else:
         decisions[suggestion["id"]] = decision
-    store.save_decisions(job_id, decisions)
-    return fixes.apply_to_review(store.load_review(job_id), found, decisions)
+    return _record(job_id, found, decisions)
+
+
+@app.post("/api/jobs/{job_id}/decisions/bulk")
+async def decide_many(request: Request, job_id: str):
+    """The same decision for a group of cells or duplicates, such as every 45 in nights."""
+    found, decisions = _decidable(request, job_id)
+    body = await _json(request)
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not ids or len(ids) > 50_000:
+        raise HTTPException(400, "Expected a list of suggestions.")
+    by_id = {f["id"]: f for f in found}
+    chosen = [by_id.get(i) for i in ids]
+    if any(s is None for s in chosen):
+        raise HTTPException(404, "One of those suggestions doesn't exist.")
+    if body.get("action") == "edit":
+        raise HTTPException(400, "Type a value one cell at a time.")
+    checked = [(s, fixes.check_decision(s, body)) for s in chosen]
+    if any(d is None for _, d in checked):
+        raise HTTPException(400, "That isn't one of the choices for all of those suggestions.")
+    for s, d in checked:
+        if d["action"] == "leave":
+            decisions.pop(s["id"], None)
+        else:
+            decisions[s["id"]] = d
+    return _record(job_id, found, decisions)
+
+
+@app.post("/api/jobs/{job_id}/decisions/rule")
+async def change_rule(request: Request, job_id: str):
+    """Allows a value, or moves a minimum or maximum, and keeps every flagged cell that change clears."""
+    found, decisions = _decidable(request, job_id)
+    body = await _json(request)
+    column, rule, value = body.get("column"), body.get("rule"), body.get("value")
+    if rule not in ("allow", "max", "min") or not isinstance(column, str) or not isinstance(value, str):
+        raise HTTPException(400, "That isn't a rule change SheetTriage can make.")
+    ids = fixes.rule_change_cells(found, column, rule, value)
+    if not ids:
+        raise HTTPException(400, "That change wouldn't clear any flagged cells.")
+    rules = decisions.setdefault("_rules", [])
+    rule_id = f"r{max([int(r['id'][1:]) for r in rules] or [0]) + 1}"
+    rules.append({"id": rule_id, "column": column, "rule": rule, "value": value, "cells": len(ids)})
+    for i in ids:
+        decisions[i] = {"action": "keep", "rule": rule_id}
+    return _record(job_id, found, decisions)
+
+
+@app.post("/api/jobs/{job_id}/decisions/rule/undo")
+async def undo_rule(request: Request, job_id: str):
+    """Takes back a rule change and the flags it cleared."""
+    found, decisions = _decidable(request, job_id)
+    rule_id = (await _json(request)).get("id")
+    rules = decisions.get("_rules", [])
+    if not any(r["id"] == rule_id for r in rules):
+        raise HTTPException(404, "That rule change doesn't exist.")
+    decisions["_rules"] = [r for r in rules if r["id"] != rule_id]
+    for key in [k for k, d in decisions.items() if isinstance(d, dict) and d.get("rule") == rule_id]:
+        decisions.pop(key)
+    return _record(job_id, found, decisions)
 
 
 @app.post("/api/jobs/{job_id}/decisions/recommended")

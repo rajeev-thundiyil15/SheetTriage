@@ -333,3 +333,114 @@ def test_spelling_overlap_alone_is_not_a_suggestion():
     assert offered("Italy") == []
     assert offered("U.K.") == ["UK"]
     assert offered("Frnace") == ["France"]
+
+
+# ── Typed values, groups, rule changes and what's left ──
+
+NIGHTS = DataSchema.model_validate({"name": "n", "columns": {
+    "nights": {"dtype": "int", "nullable": False, "min_value": 1, "max_value": 30},
+    "check_in": {"dtype": "date", "nullable": False, "date_format": "DMY"},
+    "email": {"dtype": "str", "nullable": False, "pattern": ".+@.+\..+"},
+    "room": {"dtype": "str", "nullable": False, "allowed_values": ["Single", "Double"]},
+    "notes": {"dtype": "str", "nullable": True},
+}})
+
+
+@pytest.mark.parametrize("column, typed, expected", [
+    ("nights", " 4 ", ("4", None)),
+    ("nights", "45", ("", "That's above the maximum of 30.")),
+    ("nights", "2.5", ("", "This column needs a whole number.")),
+    ("nights", "four", ("", "That isn't a number.")),
+    ("check_in", "25/03/2026", ("2026-03-25", None)),
+    ("check_in", "03/25/2026", ("", "That isn't a date that can be read day first.")),
+    ("email", "ana@example.com", ("ana@example.com", None)),
+    ("email", "ana", ("", "That doesn't match the column's format.")),
+    ("room", "Suite", ("", "That isn't one of the allowed values: Single, Double.")),
+    ("email", "", ("", "This column can't be blank.")),
+    ("notes", "", ("", None)),
+])
+def test_a_typed_value_is_checked_against_the_column_rules(column, typed, expected):
+    assert fixes.check_value(typed, NIGHTS.columns[column]) == expected
+
+
+CSV2 = (b"order_id,status,payment,price\n"
+        b"1,Pending,Card,10.00\n"
+        b"2,Returned,Card,20.00\n"
+        b"3,Returned,PayPal,5000.00\n"
+        b"4,Pending,Card,4000.00\n")
+RUN_SCHEMA2 = json.dumps({"name": "o", "columns": {
+    "order_id": {"dtype": "int"},
+    "status": {"dtype": "str", "allowed_values": ["Pending", "Shipped"]},
+    "payment": {"dtype": "str", "allowed_values": ["Card", "PayPal"]},
+    "price": {"dtype": "float", "min_value": 0, "max_value": 3000},
+}})
+
+
+def run2(client):
+    upload_id = client.post("/upload", files={"csv_file": ("o.csv", CSV2, "text/csv")}).json()["upload_id"]
+    job_id = client.post("/clean", data={"upload_id": upload_id, "schema_json": RUN_SCHEMA2}).json()["job_id"]
+    for _ in range(300):
+        if web.store.get_job(job_id, None)["status"] not in UNFINISHED:
+            return job_id
+        time.sleep(0.01)
+    raise AssertionError("the run didn't finish")
+
+
+def test_typing_a_value_fixes_the_cell_and_a_bad_one_is_refused(client):
+    job_id = run2(client)
+    price = suggestion(client.get(f"/review/{job_id}").json(), "cell", column="price", row=4)
+
+    refused = client.post(f"/api/jobs/{job_id}/decisions", json={"id": price["id"], "action": "edit", "value": "9000"})
+    review = client.post(f"/api/jobs/{job_id}/decisions", json={"id": price["id"], "action": "edit", "value": "500"}).json()
+
+    assert refused.status_code == 400
+    assert "above the maximum" in refused.json()["detail"]
+    assert review["rows"][2]["values"][3] == "500"
+    assert review["rows"][2]["approved"] == {"price": "5000.0"}
+
+
+def test_one_decision_for_a_whole_group(client):
+    job_id = run2(client)
+    returned = [s["id"] for s in client.get(f"/review/{job_id}").json()["suggestions"] if s.get("value") == "Returned"]
+
+    review = client.post(f"/api/jobs/{job_id}/decisions/bulk", json={"ids": returned, "action": "keep"}).json()
+
+    assert review["kept_cells"] == 2
+    assert client.post(f"/api/jobs/{job_id}/decisions/bulk", json={"ids": returned, "action": "edit", "value": "x"}).status_code == 400
+    assert client.post(f"/api/jobs/{job_id}/decisions/bulk", json={"ids": ["nope"], "action": "keep"}).status_code == 404
+
+
+def test_allowing_a_value_clears_every_flag_it_caused_and_can_be_undone(client):
+    job_id = run2(client)
+
+    review = client.post(f"/api/jobs/{job_id}/decisions/rule",
+                         json={"column": "status", "rule": "allow", "value": "Returned"}).json()
+
+    assert review["kept_cells"] == 2
+    assert review["rules"] == [{"id": "r1", "column": "status", "rule": "allow", "value": "Returned", "cells": 2}]
+    undone = client.post(f"/api/jobs/{job_id}/decisions/rule/undo", json={"id": "r1"}).json()
+    assert undone["kept_cells"] == 0 and undone["rules"] == []
+
+
+def test_raising_a_maximum_only_clears_the_values_under_it(client):
+    job_id = run2(client)
+
+    review = client.post(f"/api/jobs/{job_id}/decisions/rule",
+                         json={"column": "price", "rule": "max", "value": "4500"}).json()
+
+    kept = [r["row"] for r in review["rows"] if "price" in r["kept"]]
+    assert kept == [5]
+    assert "price" in review["rows"][2]["issues"]
+    assert client.post(f"/api/jobs/{job_id}/decisions/rule",
+                       json={"column": "price", "rule": "max", "value": "100"}).status_code == 400
+
+
+def test_the_still_to_fix_download_lists_only_rows_with_problems_left(client):
+    job_id = run2(client)
+    client.post(f"/api/jobs/{job_id}/decisions/rule", json={"column": "status", "rule": "allow", "value": "Returned"})
+
+    lines = client.get(f"/download/{job_id}?file=remaining").text.splitlines()
+
+    assert lines[0].startswith("row,order_id,")
+    assert [l.split(",")[0] for l in lines[1:]] == ["4", "5"]
+    assert all("Returned" not in l.split(",", 5)[-1] for l in lines[1:])

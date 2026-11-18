@@ -319,6 +319,8 @@ def resolved_cells(suggestions: list[dict], decisions: dict) -> dict:
             continue
         if d["action"] == "accept":
             resolved[(s["row"], s["column"])] = ("accept", s["options"][d["option"]]["value"])
+        elif d["action"] == "edit":
+            resolved[(s["row"], s["column"])] = ("accept", d["value"])
         elif d["action"] == "keep":
             resolved[(s["row"], s["column"])] = ("keep", None)
     return resolved
@@ -370,6 +372,7 @@ def apply_to_review(review: dict, suggestions: list[dict], decisions: dict) -> d
     review["kept_cells"] = sum(1 for a, _ in resolved.values() if a == "keep")
     review["removed_rows"] = len(removed)
     review["suggestions"] = [dict(s, decision=decisions.get(s["id"])) for s in suggestions]
+    review["rules"] = decisions.get("_rules", [])
     return review
 
 
@@ -422,8 +425,10 @@ def decided_report_csv(review: dict, suggestions: list[dict], decisions: dict) -
     return out.getvalue()
 
 
-def check_decision(suggestion: dict, decision: dict) -> dict | None:
-    """The decision cleaned up, or None if it isn't one this suggestion allows."""
+def check_decision(suggestion: dict, decision: dict, rules=None) -> dict | None:
+    """The decision cleaned up, or None if it isn't one this suggestion allows.
+
+    A typed value ("edit") must pass the column's rules; rules is that column's schema."""
     action = decision.get("action")
     if suggestion["kind"] == "cell":
         if action == "accept":
@@ -431,5 +436,77 @@ def check_decision(suggestion: dict, decision: dict) -> dict | None:
             if isinstance(option, int) and 0 <= option < len(suggestion["options"]):
                 return {"action": "accept", "option": option}
             return None
+        if action == "edit":
+            value, problem = check_value(decision.get("value"), rules)
+            return None if problem else {"action": "edit", "value": value}
         return {"action": action} if action in ("keep", "leave") else None
     return {"action": action} if action in DUPLICATE_ACTIONS else None
+
+
+def check_value(value, rules) -> tuple[str, str | None]:
+    """A value someone typed, cleaned up, and what's wrong with it under the column's rules, if anything."""
+    if not isinstance(value, str) or rules is None:
+        return "", "Please type a value."
+    text = value.strip()
+    if not text:
+        return "", None if rules.nullable else "This column can't be blank."
+    if len(text) > 500:
+        return "", "That's too long for one cell."
+    if rules.dtype in ("int", "float"):
+        try:
+            number = float(text.replace(",", ""))
+        except ValueError:
+            return "", "That isn't a number."
+        if rules.dtype == "int" and number != int(number):
+            return "", "This column needs a whole number."
+        if rules.min_value is not None and number < rules.min_value:
+            return "", f"That's below the minimum of {rules.min_value:g}."
+        if rules.max_value is not None and number > rules.max_value:
+            return "", f"That's above the maximum of {rules.max_value:g}."
+        text = str(int(number)) if rules.dtype == "int" else text.replace(",", "")
+    elif rules.dtype == "date":
+        try:
+            text = _parse_date(text, rules.date_format).strftime("%Y-%m-%d")
+        except Exception:
+            order = {"MDY": "month first", "DMY": "day first", "YMD": "year first"}.get(rules.date_format or "", "")
+            return "", f"That isn't a date that can be read{' ' + order if order else ''}."
+    if rules.allowed_values and text not in [str(a) for a in rules.allowed_values]:
+        return "", "That isn't one of the allowed values: " + ", ".join(str(a) for a in rules.allowed_values) + "."
+    if rules.pattern and not re.fullmatch(rules.pattern, text):
+        return "", "That doesn't match the column's format."
+    return text, None
+
+
+def rule_change_cells(suggestions: list[dict], column: str, rule: str, value: str) -> list[str]:
+    """The flagged cells a rule change would clear: allowing a value, or moving a minimum or maximum."""
+    ids = []
+    for s in suggestions:
+        if s["kind"] != "cell" or s["column"] != column:
+            continue
+        issue = s["issues"][0]
+        if rule == "allow" and "not in allowed values" in issue and s["value"] == value:
+            ids.append(s["id"])
+        elif rule in ("max", "min"):
+            try:
+                limit, cell = float(value), float(s["value"])
+            except ValueError:
+                continue
+            if rule == "max" and "is above max" in issue and cell <= limit:
+                ids.append(s["id"])
+            elif rule == "min" and "is below min" in issue and cell >= limit:
+                ids.append(s["id"])
+    return ids
+
+
+def remaining_csv(output_csv: str, review: dict, suggestions: list[dict], decisions: dict) -> str:
+    """Only the rows that still have problems after the person's decisions, with their row numbers."""
+    decided = pd.read_csv(io.StringIO(decided_output_csv(output_csv, review, suggestions, decisions)),
+                          dtype=str, keep_default_na=False)
+    removed = removed_rows(suggestions, decisions)
+    numbers = [n for n in range(HEADER_ROWS + 1, len(review["rows"]) + HEADER_ROWS + 1) if n not in removed]
+    decided.insert(0, "row", [str(n) for n in numbers[:len(decided)]])
+    if "_errors" in decided.columns:
+        decided = decided[decided["_errors"] != ""]
+    out = io.StringIO()
+    decided.to_csv(out, index=False)
+    return out.getvalue()
