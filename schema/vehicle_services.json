@@ -1,0 +1,23 @@
+{
+  "name": "vehicle_services",
+  "columns": {
+    "service_id": {"dtype": "str", "nullable": false, "pattern": "SV-\\d{6}"},
+    "plate": {"dtype": "str", "nullable": false, "pattern": "[A-Z]{2}\\d{2} [A-Z]{3}"},
+    "make": {"dtype": "str", "nullable": false, "allowed_values": ["Ford", "Toyota", "VW", "BMW", "Kia", "Tesla", "Nissan"]},
+    "fuel": {"dtype": "str", "nullable": false, "allowed_values": ["Petrol", "Diesel", "Hybrid", "Electric"]},
+    "year": {"dtype": "int", "nullable": false, "min_value": 2005, "max_value": 2026},
+    "mileage": {"dtype": "int", "nullable": false, "min_value": 0, "max_value": 400000},
+    "service_date": {"dtype": "date", "nullable": false, "date_format": "DMY"},
+    "service_type": {"dtype": "str", "nullable": false, "allowed_values": ["Oil Change", "Tyres", "Brakes", "MOT", "Full Service", "Battery"]},
+    "technician": {"dtype": "str", "nullable": false},
+    "labour_hours": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 12},
+    "parts_cost": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 5000},
+    "labour_cost": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 2000},
+    "total_cost": {"dtype": "float", "nullable": false, "min_value": 0, "max_value": 7000},
+    "paid": {"dtype": "str", "nullable": false, "allowed_values": ["Yes", "No"]},
+    "payment_method": {"dtype": "str", "nullable": false, "allowed_values": ["Card", "Cash", "Invoice"]},
+    "email": {"dtype": "str", "nullable": false, "pattern": ".+@.+\\..+"},
+    "next_due": {"dtype": "date", "nullable": true, "date_format": "DMY"},
+    "notes": {"dtype": "str", "nullable": true}
+  }
+}
