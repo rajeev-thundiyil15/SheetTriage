@@ -44,7 +44,7 @@ def _overloaded_error():
     return OverloadedError("Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error'}}")
 
 
-def fake_run_agent(df, schema, output_path, mode, on_log):
+def fake_run_agent(df, schema, output_path, mode, on_log, api_key=None):
     """Flags every schema violation, then saves, sending the events a real run sends."""
     tools.set_dataframe(df)
     columns = list(schema.columns)
@@ -76,12 +76,23 @@ def fake_run_agent(df, schema, output_path, mode, on_log):
 web.run_agent = fake_run_agent
 
 
-def fake_rank(cells, on_log=None):
+def fake_rank(cells, on_log=None, api_key=None):
     """Recommends the first option the code found for each cell, as Claude would but without a call."""
     return {c["id"]: (0, f"Scripted: '{c['options'][0]['value']}' is the most likely fix.") for c in cells}
 
 
 suggestions.rank_with_ai = fake_rank
+
+# A visitor's own API key: keys with "refused" in them fail the check, the way Anthropic refuses
+# a wrong key; any other well-formed key is accepted. No call is made either way.
+REFUSED_KEY_MESSAGE = "Anthropic didn't accept that API key. Check you copied all of it, or create a new one."
+
+
+def fake_check_own_key(api_key):
+    return REFUSED_KEY_MESSAGE if "refused" in api_key else None
+
+
+web.check_own_key = fake_check_own_key
 
 if __name__ == "__main__":
     uvicorn.run(web.app, host="127.0.0.1", port=PORT, log_level="warning")

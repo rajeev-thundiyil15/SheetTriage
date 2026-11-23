@@ -21,7 +21,7 @@
 
 <main class="legal">
   <h1>Privacy</h1>
-  <p class="updated">Last updated November 12, 2026</p>
+  <p class="updated">Last updated November 23, 2026</p>
 
   <p>SheetTriage cleans CSV files. This page says what it keeps, for how long, who can see it, and how to delete it.</p>
 
@@ -30,6 +30,7 @@
     <li><strong>Your file and its results.</strong> The CSV you upload, the cleaned file, the error report, and the progress of the run.</li>
     <li><strong>Your account, if you sign in.</strong> Your email address and Google's ID for your account. SheetTriage never sees your Google password.</li>
     <li><strong>A count of your runs.</strong> To limit free runs, each run records a scrambled form of the internet address it came from. The address itself isn't stored, and the scrambled form can't be turned back into it.</li>
+    <li><strong>Not your API key.</strong> If you add your own Anthropic API key, it's used for that run only, held in the server's memory while the run lasts, and never written to its database, files or logs. If you tick "Remember it in this browser", it's kept in your browser only, not on the server.</li>
     <li><strong>Two cookies.</strong> One links your browser to the runs it made, and ends when you close the browser. The other keeps you signed in, for up to 30 days. There are no advertising or tracking cookies, and no analytics.</li>
   </ul>
 
@@ -44,7 +45,7 @@
   <h2>Who can see it</h2>
   <ul>
     <li><strong>Only you.</strong> A run belongs to the account or browser that made it. Anyone else who opens its link is told it doesn't exist.</li>
-    <li><strong>Anthropic, to run the cleaning.</strong> SheetTriage uses Anthropic's Claude API. Claude is sent your column names, the first five rows, and the values that break your rules, not the whole file. If you write rules in plain English, Claude is also sent those rules and the first three rows. Anthropic's commercial terms don't allow it to train its models on this data.</li>
+    <li><strong>Anthropic, to run the cleaning.</strong> SheetTriage uses Anthropic's Claude API. Claude is sent your column names, the first five rows, and the values that break your rules, not the whole file. If you write rules in plain English, Claude is also sent those rules and the first three rows. Anthropic's commercial terms don't allow it to train its models on this data. If you use your own API key, the same is sent under your own Anthropic account.</li>
     <li><strong>Railway, which hosts the site</strong> in the United States, stores the files on its servers.</li>
     <li><strong>Google, if you sign in with Google,</strong> knows that you signed in to SheetTriage.</li>
   </ul>

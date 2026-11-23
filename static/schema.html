@@ -272,6 +272,24 @@
     }
     .limit-note:empty { display: none; }
 
+    /* ── Your own API key (optional) ── */
+    details.own-key {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); padding: 10px 12px;
+    }
+    details.own-key summary { font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+    details.own-key .own-key-body { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    details.own-key p { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 0; }
+    details.own-key a { color: var(--blue); }
+    #api-key {
+      width: 100%; box-sizing: border-box; padding: 8px 10px; font: inherit; font-size: 13px;
+      border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text);
+    }
+    #api-key:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+    .own-key-remember { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+    .key-note { font-size: 12px; line-height: 1.5; color: #b91c1c; }
+    .key-note:empty { display: none; }
+
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
       width: 14px; height: 14px; flex-shrink: 0;
@@ -440,6 +458,20 @@
         </label>
       </div>
     </div>
+
+    <details class="own-key" id="own-key">
+      <summary>Use your own Anthropic API key (optional)</summary>
+      <div class="own-key-body">
+        <p>With your own key, runs don't count toward the free limit, and Anthropic bills your account:
+          about 1 to 5 cents for a small file, and 15 to 50 cents for 30,000 rows.
+          You can create a key in the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Anthropic console</a>.</p>
+        <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false" aria-label="Your Anthropic API key">
+        <label class="own-key-remember"><input type="checkbox" id="remember-key"> Remember it in this browser</label>
+        <p>The key is used for this run only and is never saved on our server.
+          If you tick the box, it's kept in this browser only; leave it unticked on a shared computer.</p>
+        <div class="key-note" id="key-note" role="alert"></div>
+      </div>
+    </details>
 
     <div class="limit-note" id="limit-note" role="alert"></div>
 
@@ -694,27 +726,63 @@
     form.append('upload_id', uploadId);
     form.append('schema_json', schemaText);
     form.append('mode', mode);
+    const apiKey = document.getElementById('api-key').value.trim();
+    if (apiKey) form.append('api_key', apiKey);
+    document.getElementById('key-note').textContent = '';
+    document.getElementById('limit-note').textContent = '';
+    if (apiKey) btnText.textContent = 'Checking your key...';
+
+    const stopWaiting = () => {
+      btn.disabled = false;
+      btn.classList.remove('running');
+      btnText.textContent = 'Run Agent';
+    };
 
     try {
       const res = await fetch('/clean', { method: 'POST', body: form });
       if (res.status === 429) {
-        // Out of runs for now: say so on the page, with when the next one frees up.
+        // Out of runs for now: say so on the page, with when the next one frees up, and offer the key field.
         document.getElementById('limit-note').textContent = (await res.json()).detail;
-        btn.disabled = false;
-        btn.classList.remove('running');
-        btnText.textContent = 'Run Agent';
+        document.getElementById('own-key').open = true;
+        stopWaiting();
         return;
       }
+      if (res.headers.get('X-Problem') === 'api-key') {
+        document.getElementById('key-note').textContent = (await res.json()).detail;
+        document.getElementById('own-key').open = true;
+        document.getElementById('api-key').focus();
+        stopWaiting();
+        return;
+      }
+      if (res.ok) rememberKey(apiKey);
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Server error'); }
       const jobId = (await res.json()).job_id;
       window.location.href = `/results?job=${jobId}`;
     } catch(e) {
       alert('Could not start job:\n' + e.message);
-      btn.disabled = false;
-      btn.classList.remove('running');
-      btnText.textContent = 'Run Agent';
+      stopWaiting();
     }
   }
+
+  // Your own API key: kept in this browser only when the box is ticked, and only once a run accepts it.
+  const KEY_STORE = 'sheettriage.api_key';
+  function rememberKey(apiKey) {
+    try {
+      if (apiKey && document.getElementById('remember-key').checked) localStorage.setItem(KEY_STORE, apiKey);
+      else localStorage.removeItem(KEY_STORE);
+    } catch (e) { /* storage blocked: the key just isn't remembered */ }
+  }
+  (function restoreKey() {
+    let saved = null;
+    try { saved = localStorage.getItem(KEY_STORE); } catch (e) { /* storage blocked */ }
+    if (!saved) return;
+    document.getElementById('api-key').value = saved;
+    document.getElementById('remember-key').checked = true;
+    document.getElementById('own-key').open = true;
+  })();
+  document.getElementById('remember-key').addEventListener('change', (e) => {
+    if (!e.target.checked) { try { localStorage.removeItem(KEY_STORE); } catch (err) { /* storage blocked */ } }
+  });
   // Schema file upload — reads a .json file straight into the schema textarea
   document.getElementById('schema-file').addEventListener('change', (e) => {
     const f = e.target.files[0];

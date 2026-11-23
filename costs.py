@@ -43,9 +43,13 @@ def band(rows: int) -> str:
 
 
 def report(store: Store, days: float) -> str:
-    jobs = [j for j in store.all_jobs(time.time() - days * 86400) if j["steps"]]
+    counted = [j for j in store.all_jobs(time.time() - days * 86400) if j["steps"]]
+    # Runs on a visitor's own Anthropic key are billed to them, not to the server's key.
+    jobs = [j for j in counted if not j.get("own_key")]
+    own_key_runs = len(counted) - len(jobs)
     if not jobs:
-        return f"No runs with token counts in the last {days:g} days."
+        return f"No runs with token counts in the last {days:g} days" + (
+            f" ({own_key_runs} on visitors' own keys, not counted)." if own_key_runs else ".")
 
     lines = [f"{'Started':<17} {'Rows':>7} {'Mode':<7} {'Status':<11} {'Steps':>5} "
              f"{'Input':>9} {'Output':>8} {'Cost':>8}"]
@@ -62,6 +66,8 @@ def report(store: Store, days: float) -> str:
     priced = [c for costs in by_band.values() for c in costs]
     lines.append("")
     lines.append(f"{len(jobs)} runs, {len(priced)} with a known price, ${sum(priced):.2f} in total.")
+    if own_key_runs:
+        lines.append(f"{own_key_runs} more runs used visitors' own API keys, so they cost you nothing.")
     for _, name in BANDS + [(None, "over 30k rows")]:
         costs = by_band.get(name)
         if costs:

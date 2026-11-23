@@ -90,6 +90,7 @@ Google's "Sign in with Google" button on the sign-in page (`AUTH_MODE=google`, `
 - **Visitors and free accounts:** 3 runs in any 24 hours (`FREE_RUNS_PER_DAY`), plus the upload caps (5 MB, 30,000 rows). Visitors are counted by a scrambled form of their address: the last `X-Forwarded-For` entry, which Railway's proxy adds.
 - **Paid:** `PAID_RUNS_PER_MONTH` (100 for now) and bigger files.
 - **Demo:** the bundled file doesn't count, and is only offered locally.
+- **Your own API key:** runs on a visitor's own Anthropic key don't count, and are marked `own_key` on the job so `costs.py` leaves them out. Added Nov 23; see Decisions.
 
 ### Restarts
 
@@ -154,3 +155,8 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 3. **Free tier numbers:** 3 runs a day for now. The largest free file is still 30,000 rows.
 4. **Paid price.** First measure Claude cost per run (Part 1) and test Haiku 5.5, which is listed at about a tenth of Haiku 4.5's price.
 5. **Runs at once:** start at 2, and change it once a 30,000-row run's memory use on Railway is measured.
+6. **Bring your own key, alongside the free runs** (Nov 23). Most of the people this is for won't have an Anthropic API key, so the 3 free runs stay as the easy path. Anyone who has a key can add it for unlimited runs, which cost the server nothing. Billing waits until feedback shows people would pay; the ReviewLab question asks whether they'd rather pay a small monthly fee or use their own key.
+   - The key goes with the run request over HTTPS, is checked with one 1-token request, and lives only in the run's memory. It's never stored on the server, and is kept out of error messages.
+   - The browser remembers it (localStorage) only when the person ticks the box.
+   - Own keys get 6 retries instead of 2, because new Anthropic accounts have low per-minute limits and a 30,000-row run can reach them.
+   - Drafting the schema from plain-English rules still uses the server's key: it's one small request, made before the person reaches the run button.

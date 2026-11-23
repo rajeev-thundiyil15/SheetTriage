@@ -6,12 +6,29 @@ export class SchemaPage {
   readonly columns: Locator;
   readonly questionsNote: Locator;
   readonly runButton: Locator;
+  readonly ownKey: Locator;
+  readonly apiKey: Locator;
+  readonly rememberKey: Locator;
+  readonly keyNote: Locator;
+  readonly limitNote: Locator;
 
   constructor(readonly page: Page) {
     this.fileName = page.locator('#file-name');
     this.columns = page.locator('#columns-section');
     this.questionsNote = page.locator('#questions-note');
     this.runButton = page.getByRole('button', { name: 'Run Agent' });
+    this.ownKey = page.locator('#own-key');
+    this.apiKey = page.getByLabel('Your Anthropic API key');
+    this.rememberKey = page.getByLabel('Remember it in this browser');
+    this.keyNote = page.locator('#key-note');
+    this.limitNote = page.locator('#limit-note');
+  }
+
+  /** Opens "Use your own Anthropic API key" and types the key in. */
+  async useOwnKey(key: string, { remember = false } = {}) {
+    await this.page.getByText('Use your own Anthropic API key').click();
+    await this.apiKey.fill(key);
+    if (remember) await this.rememberKey.check();
   }
 
   async expectLoaded() {

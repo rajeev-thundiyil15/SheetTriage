@@ -26,7 +26,7 @@ load_dotenv()
 import auth  # noqa: E402  (reads AUTH_MODE, so .env has to be loaded first)
 import suggestions as fixes  # noqa: E402
 import tools  # noqa: E402
-from agent import run_agent, derive_report_path  # noqa: E402
+from agent import OWN_KEY_SHAPE, check_own_key, derive_report_path, own_key_problem, run_agent  # noqa: E402
 from csv_input import normalize_csv  # noqa: E402
 from review import build_review  # noqa: E402
 from schema import DataSchema  # noqa: E402
@@ -149,7 +149,8 @@ def _limit_message(usage: dict) -> str:
         return (f"You've used all {usage['run_limit']} runs on your plan this month. "
                 "They reset on the 1st.")
     return (f"You've used your {usage['run_limit']} free runs for today. "
-            f"You can run another file in {_wait_text(usage['next_run_at'] - time.time())}.")
+            f"You can run another file in {_wait_text(usage['next_run_at'] - time.time())}, "
+            "or add your own Anthropic API key for as many runs as you like.")
 
 
 # ── Helpers ──
@@ -167,8 +168,19 @@ def _enforce_upload_limits(contents: bytes, df: pd.DataFrame) -> None:
         raise HTTPException(413, f"File has {len(df):,} rows — limit is {MAX_UPLOAD_ROWS:,} rows.")
 
 
-def _run_error_message(exc: Exception) -> str:
-    """What the results page says when a run stops, without the raw API error."""
+# Marks a refusal as being about the visitor's own key, so the page shows it beside the key field.
+KEY_PROBLEM = {"X-Problem": "api-key"}
+
+
+def _run_error_message(exc: Exception, api_key: str | None = None) -> str:
+    """What the results page says when a run stops, without the raw API error.
+
+    On a visitor's own key the problem is with their account, so the message says so; and the
+    key never reaches the message, even if an unexpected error happened to include it."""
+    if api_key:
+        if getattr(exc, "status_code", None) is not None:
+            return own_key_problem(exc)
+        return _run_error_message(exc).replace(api_key, "[your API key]")
     status = getattr(exc, "status_code", None)
     name = type(exc).__name__
     if status in (529, 503) or "Overloaded" in name:
@@ -428,16 +440,17 @@ async def infer_schema_endpoint(
 # ── Runs ──
 
 def _prepare_suggestions(job_store: Store, job_id: str, output_path: Path, review: dict,
-                         schema: DataSchema, mode: str, on_log) -> None:
+                         schema: DataSchema, mode: str, on_log, api_key: str | None = None) -> None:
     """Suggested fixes for the flagged cells, and likely duplicates, for the person to approve.
 
     Strict mode has already left the flagged rows out of the file, so there's nothing to fix there."""
     if mode == "strict":
         return
+    own = {"api_key": api_key} if api_key else {}
     try:
         output = pd.read_csv(output_path, dtype=str, keep_default_na=False)
         found = fixes.build_suggestions(output, review["report"], schema,
-                                        rank=lambda cells: fixes.rank_with_ai(cells, on_log))
+                                        rank=lambda cells: fixes.rank_with_ai(cells, on_log, **own))
         job_store.save_suggestions(job_id, found)
         cells = sum(1 for f in found if f["kind"] == "cell" and f["options"])
         copies = sum(1 for f in found if f["kind"] == "duplicate")
@@ -453,7 +466,10 @@ async def clean(
     upload_id: str = Form(...),
     schema_json: str = Form(...),
     mode: str = Form(default="clean"),
+    api_key: str = Form(default=""),
 ):
+    """api_key is optional: a visitor's own Anthropic key. The run then goes on their account and
+    doesn't count toward the free limit. It's held in memory for this run only, never stored."""
     store.delete_expired()
 
     try:
@@ -463,9 +479,18 @@ async def clean(
 
     upload = _get_upload(request, upload_id)
     user = _user(request)
-    usage = _usage(request, user)
-    if not upload["demo"] and usage["runs_used"] >= usage["run_limit"]:
-        raise HTTPException(429, _limit_message(usage))
+    api_key = api_key.strip() or None
+    if api_key:
+        if not OWN_KEY_SHAPE.fullmatch(api_key):
+            raise HTTPException(400, "That doesn't look like an Anthropic API key. Keys start with sk-ant-.",
+                                headers=KEY_PROBLEM)
+        problem = await asyncio.to_thread(check_own_key, api_key)
+        if problem:
+            raise HTTPException(400, problem, headers=KEY_PROBLEM)
+    else:
+        usage = _usage(request, user)
+        if not upload["demo"] and usage["runs_used"] >= usage["run_limit"]:
+            raise HTTPException(429, _limit_message(usage))
 
     contents = store.upload_contents(upload["id"])
     df = _read_csv(contents)
@@ -477,7 +502,8 @@ async def clean(
         if running + waiting >= MAX_RUNS_AT_ONCE + MAX_WAITING_RUNS:
             raise HTTPException(409, BUSY_MESSAGE)
         job = store.add_job(_owner(request), upload, mode, schema.model_dump(),
-                            keep_seconds=_keep_seconds(user, upload["demo"]), client=auth.client_key(request))
+                            keep_seconds=_keep_seconds(user, upload["demo"]), client=auth.client_key(request),
+                            own_key=bool(api_key))
     job_id = job["id"]
     output_path = store.output_path(job_id)
     if running + waiting >= MAX_RUNS_AT_ONCE:
@@ -485,6 +511,8 @@ async def clean(
 
     # The run keeps the store it started with, even if the module's is swapped (as tests do).
     job_store = store
+    # Only passed when there is one, so the agent (or a test's stand-in) uses the server's key otherwise.
+    own = {"api_key": api_key} if api_key else {}
 
     def on_log(event: dict) -> None:
         # Token counts go on the run's record for the cost report; they aren't shown to people.
@@ -496,7 +524,7 @@ async def clean(
     def run():
         try:
             job_store.update_job(job_id, status="running")
-            run_agent(df, schema, output_path=str(output_path), mode=mode, on_log=on_log)
+            run_agent(df, schema, output_path=str(output_path), mode=mode, on_log=on_log, **own)
             flagged = None
             if output_path.exists():
                 try:
@@ -506,12 +534,12 @@ async def clean(
                 except Exception as exc:
                     on_log({"type": "warning", "message": f"The review couldn't be prepared: {exc}"})
                 else:
-                    _prepare_suggestions(job_store, job_id, output_path, review, schema, mode, on_log)
+                    _prepare_suggestions(job_store, job_id, output_path, review, schema, mode, on_log, api_key)
             done = {"type": "done", "download_url": f"/download/{job_id}",
                     "report_url": f"/download/{job_id}?file=report"}
             job_store.finish_job(job_id, done, status="done", flagged_rows=flagged, finished_at=time.time())
         except Exception as exc:
-            message = _run_error_message(exc)
+            message = _run_error_message(exc, api_key)
             job_store.finish_job(job_id, {"type": "error", "message": message},
                                  status="error", error=message, finished_at=time.time())
 

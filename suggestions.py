@@ -279,18 +279,18 @@ Write each reason as one short plain sentence, without jargon. Items:
 """
 
 
-def rank_with_ai(cells: list[dict], on_log=None) -> dict:
-    """Asks Claude which option fits each cell. Returns {id: (index or None, reason)}; {} if Claude can't be reached."""
-    import anthropic
+def rank_with_ai(cells: list[dict], on_log=None, api_key: str | None = None) -> dict:
+    """Asks Claude which option fits each cell. Returns {id: (index or None, reason)}; {} if Claude can't be reached.
 
-    from agent import MODEL, usage_event
+    api_key: the visitor's own key when the run used one, so the whole run goes on their account."""
+    from agent import MODEL, claude_client, usage_event
 
     items = [{
         "id": c["id"], "column": c["column"], "value": c["value"], "issue": c["issues"][0],
         "options": [{"index": i, "value": o["value"], "note": o["note"]} for i, o in enumerate(c["options"])],
     } for c in cells]
     try:
-        response = anthropic.Anthropic().messages.create(
+        response = claude_client(api_key).messages.create(
             model=MODEL,
             max_tokens=4096,
             tools=[RANK_TOOL],

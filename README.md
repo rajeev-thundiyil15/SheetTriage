@@ -74,6 +74,7 @@ Fixing everything automatically would mean guessing, and flagging everything lea
 - **Every run belongs to someone.** Uploads, runs and results are saved in SQLite plus files on a Railway volume, each owned by a signed-in account or by the browser that made it. Every page, review and download checks the owner, and anyone else is told the run doesn't exist.
 - **Signing in is optional.** Without it, results are kept for an hour in that browser. Signing in with Google keeps them for 7 days in My files, on any device. SheetTriage never stores passwords.
 - **Runs are limited, so nobody can run up the bill.** Everyone not on a paid plan gets 3 runs a day: visitors are counted by a scrambled form of their address, and free accounts by account, so signing in never means fewer runs.
+- **Or bring your own key.** Anyone with an Anthropic API key can add it on the schema page for unlimited runs, billed to their own account. The key is checked with one tiny request before the run starts, so a wrong key or an empty account fails at once. It's used for the agent and its suggestions, held in memory for that run only, and never written to the database, files or logs. The browser remembers it only if the person ticks the box.
 - **Each run's cost is recorded.** The tokens of every Claude request go on the run's record, and `costs.py` reports what runs really cost by file size.
 - **Two runs at once.** Each run's working data is kept per thread, so runs side by side never touch each other's data. A few more wait their turn.
 
@@ -81,8 +82,8 @@ Fixing everything automatically would mean guessing, and flagging everything lea
 
 ## Testing
 
-- **277 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages, plus saved runs, who can open them, sign-in (including forged and expired Google tokens), run limits, deleting, two runs at once, and suggested fixes: the options for each kind of problem, recommendations outside the options being ignored, duplicates, decisions and the downloads that follow them. None call the API.
-- **20 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema, results and My files pages, and the account menu:
+- **312 unit tests** (pytest) cover the tools, the save check, schema drafting, upload parsing, the review page data and error messages, plus saved runs, who can open them, sign-in (including forged and expired Google tokens), run limits, deleting, two runs at once, and suggested fixes: the options for each kind of problem, recommendations outside the options being ignored, duplicates, decisions and the downloads that follow them. Visitors' own API keys are covered too: the key reaching both the agent and the suggestions, those runs not counting toward the limit, a refused key stopping the run before it starts, and the key never appearing in the database, the run's files or an error message. None call the API.
+- **25 browser tests** (Playwright, TypeScript) run the real app with a scripted agent, so they're free and give the same result every time. They use page objects (`e2e/pages/`) for the upload, schema, results and My files pages, and the account menu:
   - upload to review;
   - refreshing the results page;
   - the demo button from start to finish;
@@ -94,6 +95,7 @@ Fixing everything automatically would mean guessing, and flagging everything lea
   - a run that fails partway;
   - two people running files at the same time;
   - running out of free runs;
+  - running on your own API key, remembering it only when asked, and a refused or malformed key being explained beside the field;
   - turning columns on and off in the review;
   - approving suggested fixes, keeping a value and removing a duplicate, with the download following;
   - and, on a second test server with sign-in turned on: a visitor cleaning a file without signing in, a signed-in run saved to My files, another account opening your link, runs moving to the account on sign-in, deleting a run, deleting an account, and My files at phone width.

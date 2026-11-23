@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     schema TEXT NOT NULL,
     demo INTEGER NOT NULL DEFAULT 0,
     client TEXT,
+    own_key INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     error TEXT,
     flagged_rows INTEGER,
@@ -98,6 +99,7 @@ class Store:
         have = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)")}
         added = {
             "client": "TEXT",
+            "own_key": "INTEGER NOT NULL DEFAULT 0",
             "model": "TEXT",
             "steps": "INTEGER NOT NULL DEFAULT 0",
             "cache_write_tokens": "INTEGER NOT NULL DEFAULT 0",
@@ -194,16 +196,18 @@ class Store:
         return self.job_dir(job_id) / "output_clean.csv"
 
     def add_job(self, owner: str, upload: dict, mode: str, schema: dict, keep_seconds: float,
-                client: str | None = None) -> dict:
-        """client is a scrambled form of the visitor's address, used only to count their runs."""
+                client: str | None = None, own_key: bool = False) -> dict:
+        """client is a scrambled form of the visitor's address, used only to count their runs.
+
+        own_key says the run used the visitor's own Anthropic key. The key itself is never stored."""
         job_id = str(uuid.uuid4())
         self.job_dir(job_id).mkdir(parents=True, exist_ok=True)
         now = time.time()
         self._query(
-            "INSERT INTO jobs (id, owner, upload_id, filename, rows, mode, schema, demo, client, status, "
-            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+            "INSERT INTO jobs (id, owner, upload_id, filename, rows, mode, schema, demo, client, own_key, status, "
+            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
             (job_id, owner, upload["id"], upload["filename"], upload["rows"], mode, json.dumps(schema),
-             int(upload["demo"]), client, now, now + keep_seconds),
+             int(upload["demo"]), client, int(own_key), now, now + keep_seconds),
         )
         return self.get_job(job_id, owner)
 
@@ -242,17 +246,18 @@ class Store:
             "SELECT * FROM jobs WHERE owner = ? ORDER BY created_at DESC", (owner,))]
 
     def run_times(self, since: float, owner: str | None = None, client: str | None = None) -> list[float]:
-        """When each run that counts toward a limit started, oldest first: the demo file doesn't count.
+        """When each run that counts toward a limit started, oldest first: the demo file and runs on
+        the visitor's own key don't count.
 
         By owner for an account, or by client for visitors who haven't signed in."""
         if owner is not None:
             rows = self._query(
-                "SELECT created_at FROM jobs WHERE owner = ? AND demo = 0 AND created_at >= ? ORDER BY created_at",
-                (owner, since))
+                "SELECT created_at FROM jobs WHERE owner = ? AND demo = 0 AND own_key = 0 AND created_at >= ? "
+                "ORDER BY created_at", (owner, since))
         else:
             rows = self._query(
                 "SELECT created_at FROM jobs WHERE client = ? AND owner LIKE 'session:%' AND demo = 0 "
-                "AND created_at >= ? ORDER BY created_at", (client, since))
+                "AND own_key = 0 AND created_at >= ? ORDER BY created_at", (client, since))
         return [r["created_at"] for r in rows]
 
     def delete_job(self, job_id: str) -> None:
@@ -320,4 +325,5 @@ def _job(row: sqlite3.Row) -> dict:
     job = dict(row)
     job["schema"] = json.loads(job["schema"])
     job["demo"] = bool(job["demo"])
+    job["own_key"] = bool(job.get("own_key"))
     return job

@@ -336,6 +336,50 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
 
 MODEL = "claude-haiku-4-5-20251001"
 
+# A visitor's own Anthropic key: sk-ant- then letters, digits, dashes and underscores.
+OWN_KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]{20,300}")
+
+
+def claude_client(api_key: str | None = None, max_retries: int | None = None) -> anthropic.Anthropic:
+    """The server's key by default. A visitor's own key gets more retries: new Anthropic accounts
+    have low per-minute limits, and the SDK waits out a rate limit before retrying."""
+    if api_key:
+        return anthropic.Anthropic(api_key=api_key, max_retries=6 if max_retries is None else max_retries)
+    return anthropic.Anthropic()
+
+
+def own_key_problem(exc: Exception) -> str:
+    """What to tell someone whose own key failed, in plain words and without the raw API error."""
+    status = getattr(exc, "status_code", None)
+    name = type(exc).__name__
+    if status == 401:
+        return "Anthropic didn't accept that API key. Check you copied all of it, or create a new one."
+    if status == 403:
+        return "That API key isn't allowed to use Claude. Check its permissions in the Anthropic console."
+    if status == 400 and "credit" in str(exc).lower():
+        return "Your Anthropic account is out of credit. Add credit in the Anthropic console, then try again."
+    if status == 429:
+        return ("Your Anthropic account hit its rate limit, so the run stopped. "
+                "New accounts have low limits: wait a minute and try again, or try a smaller file.")
+    if status == 404:
+        return "Your Anthropic account can't use the model this app runs on."
+    if status in (529, 503) or "Overloaded" in name:
+        return "Claude is overloaded right now. Please try again in a few minutes."
+    if "Connection" in name or "Timeout" in name:
+        return "The server couldn't reach Claude. Please try again in a few minutes."
+    return "Your API key couldn't be used. Please check it and try again."
+
+
+def check_own_key(api_key: str) -> str | None:
+    """None when the key works; otherwise what's wrong. One tiny request (a tiny fraction of a cent
+    on their account), so a bad key or an empty account fails now rather than halfway through a run."""
+    try:
+        claude_client(api_key, max_retries=1).messages.create(
+            model=MODEL, max_tokens=1, messages=[{"role": "user", "content": "Hi"}])
+    except Exception as exc:
+        return own_key_problem(exc)
+    return None
+
 
 def usage_event(response) -> dict:
     """The tokens one Claude request used, so each run's real cost can be recorded."""
@@ -358,8 +402,10 @@ def run_agent(
     mode: str = "clean",
     max_iterations: int = 80,
     on_log: Callable[[dict], None] | None = None,
+    api_key: str | None = None,
 ) -> pd.DataFrame:
     """
+    api_key: a visitor's own Anthropic key; the server's key when None.
     mode:
       "audit"  — validate only, never fix. Returns error report + annotated CSV.
       "clean"  — fix what's safe, mark the rest. Returns annotated CSV + report.
@@ -387,7 +433,7 @@ def run_agent(
             print(f"\nWARNING: {msg['message']}")
 
     t.set_dataframe(df)
-    client = anthropic.Anthropic()
+    client = claude_client(api_key)
 
     report_path = derive_report_path(output_path)
 
