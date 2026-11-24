@@ -23,4 +23,4 @@ After the rules are applied, check on the schema page that check_in reads **day 
 - **Fix flagged cells** offers a fix for about 460 cells, for example £129.00 to 129.00, 03/25/2026 to 2026-03-25, 30/02/2026 to the 28th or March 1, and U.K. to UK. Scotland, Italy, No Show, Walk-in, Penthouse and Twin get no suggestion.
 - **50 duplicate groups**, each a pair of bookings.
 - **Nothing guessed:** U.K. is flagged, not changed to UK, until you approve it.
-- A 30,000-row clean run takes about 2 minutes and costs roughly 10 to 40 cents.
+- A 30,000-row clean run takes about 2 minutes and costs roughly 2 to 5 cents on Haiku 5.5.

@@ -55,6 +55,14 @@ def test_the_code_only_offers_fixes_it_can_back_up(value, issue, column, expecte
     assert options(value, issue, column) == expected
 
 
+def test_a_date_option_tells_claude_the_columns_own_order():
+    # Haiku 5.5 once called a month-first reading "the column's order" in a day-first column,
+    # because the order was never given to it.
+    [option] = fixes.cell_options("31/01/2026", "cannot convert '31/01/2026' to date", SCHEMA.columns["ordered"], Counter())
+
+    assert option["note"] == "read day first; this column is written month first"
+
+
 def test_a_number_option_must_still_be_in_range():
     assert options("€4,999.00", "cannot convert '€4,999.00' to float", "price") == []
 

@@ -6,7 +6,7 @@ An AI agent that cleans messy CSV files: it fixes what it can safely fix, flags 
 
 **Try it:** [sheettriage-production.up.railway.app](https://sheettriage-production.up.railway.app/app) and upload any CSV. No sign-up needed. For a file with known problems, download [`static/demo/event_registrations.csv`](static/demo/event_registrations.csv) (40 rows, 24 planted problems). Running locally, the upload page also has a **Try demo data** button.
 
-Built with Python, FastAPI, pandas and Claude Haiku 4.5 (tool use), with pytest and Playwright tests running on every push.
+Built with Python, FastAPI, pandas and Claude Haiku 5.5 (tool use), with pytest and Playwright tests running on every push.
 
 ![The review page, showing flagged cells highlighted in a table of cleaned data](docs/screenshots/5-review-flagged.png)
 
@@ -59,7 +59,7 @@ The schema page is plain Python (`schema_profile.py`). It turns a guess into a q
 
 ### 5. Haiku, because the work is in the tools
 
-Validation and fixing are deterministic pandas code. The model only decides which tool to call next, and Haiku 4.5 does that reliably at a fraction of the price of larger models. Measured costs are below.
+Validation and fixing are deterministic pandas code. The model only decides which tool to call next, and Haiku does that reliably at a fraction of the price of larger models. The app moved from Haiku 4.5 to Haiku 5.5 after both flagged exactly the right rows on the test files (below), with 5.5 costing about a tenth as much. `CLAUDE_MODEL` switches models without a code change.
 
 ### 6. The AI recommends; you approve
 
@@ -125,14 +125,17 @@ cd e2e && npm ci && npx playwright install chromium && npm test
 
 ## Cost
 
-These figures were estimated by replaying a clean run with Anthropic's token-counting endpoint, at Haiku 4.5 prices ($1 per million input tokens, $5 per million output tokens):
+Measured on Nov 23 with real runs in Clean + report mode, from the tokens each run recorded:
 
-| File | Typical run (8 requests) | Long run (30 requests) |
-|---|---|---|
-| 5,000 rows | $0.07 | $0.27 |
-| 50,000 rows | $0.11 | $0.42 |
+| File | Model | Rows flagged (expected) | Agent steps | Time | Cost |
+|---|---|---|---|---|---|
+| 40 rows, 7 columns | Haiku 4.5 | 18 (18) | 12 | 24 s | $0.085 |
+| 40 rows, 7 columns | Haiku 5.5 | 18 (18) | 7 | 15 s | $0.005 |
+| 30,000 rows, 18 columns | Haiku 5.5 | 1,278 (1,278) | 8 | about 2 to 2½ min | $0.018 |
 
-The system prompt and tool definitions are marked for prompt caching. At about 2,400 tokens they are under Haiku 4.5's 4,096-token minimum, so caching doesn't take effect yet.
+On the 30,000-row file, Claude's recommendations for the suggested fixes added one request and about half a cent: it recommended a fix for 362 of the 411 cells that had one, and said it wasn't sure for the rest, such as 31/04/2026, which could mean 30 April or 1 May.
+
+The system prompt and tool definitions are marked for prompt caching. Haiku 5.5 caches them (most of each run's later input is read from the cache); Haiku 4.5 didn't, because they're under its 4,096-token minimum.
 
 ---
 

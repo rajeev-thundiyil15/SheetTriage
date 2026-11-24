@@ -69,14 +69,19 @@ def _allowed_options(value: str, rules, counts: Counter) -> list[dict]:
             for score, a in ranked[:MAX_OPTIONS] if score >= best - NEAR_THE_BEST]
 
 
-def _date_options(value: str) -> list[dict]:
+DATE_ORDER_WORDS = {"DMY": "day first", "MDY": "month first", "YMD": "year first"}
+
+
+def _date_options(value: str, date_format: str | None = None) -> list[dict]:
     match = NUMERIC_DATE.match(value.strip())
     if not match:
         return []
     a, b, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
     year = year + 2000 if year < 100 else year
+    # Claude is told the column's own order, so it can say whether a reading matches it.
+    column = f"; this column is written {DATE_ORDER_WORDS[date_format]}" if date_format in DATE_ORDER_WORDS else ""
     options = []
-    for month, day, note in ((a, b, "read month first"), (b, a, "read day first")):
+    for month, day, note in ((a, b, "read month first" + column), (b, a, "read day first" + column)):
         try:
             date = pd.Timestamp(year=year, month=month, day=day)
         except ValueError:
@@ -101,7 +106,9 @@ def _number_options(value: str, rules) -> list[dict]:
     text = value.strip()
     candidates = []
     if (m := CURRENCY.match(text)):
-        candidates.append((float(m.group(1).replace(",", "")), "without the currency sign; check the currency"))
+        # Said outright, because Haiku 5.5 otherwise assumed the column's currency was known.
+        candidates.append((float(m.group(1).replace(",", "")),
+                           "without the currency sign; the rules don't say which currency this column uses"))
     elif THOUSANDS.match(text):
         candidates.append((float(text.replace(",", "")), "without the thousands separator"))
     elif text.casefold() in NUMBER_WORDS:
@@ -147,7 +154,7 @@ def cell_options(value: str, issue: str, rules, counts: Counter) -> list[dict]:
     if "not in allowed values" in issue:
         return _allowed_options(value, rules, counts)
     if "cannot convert" in issue and issue.rstrip().endswith("to date"):
-        return _date_options(value)
+        return _date_options(value, getattr(rules, "date_format", None))
     if "cannot convert" in issue:
         return _number_options(value, rules)
     if "is below min" in issue or "is above max" in issue:
@@ -283,7 +290,7 @@ def rank_with_ai(cells: list[dict], on_log=None, api_key: str | None = None) -> 
     """Asks Claude which option fits each cell. Returns {id: (index or None, reason)}; {} if Claude can't be reached.
 
     api_key: the visitor's own key when the run used one, so the whole run goes on their account."""
-    from agent import MODEL, claude_client, usage_event
+    from agent import MAX_REPLY_TOKENS, MODEL, claude_client, usage_event
 
     items = [{
         "id": c["id"], "column": c["column"], "value": c["value"], "issue": c["issues"][0],
@@ -292,7 +299,7 @@ def rank_with_ai(cells: list[dict], on_log=None, api_key: str | None = None) -> 
     try:
         response = claude_client(api_key).messages.create(
             model=MODEL,
-            max_tokens=4096,
+            max_tokens=MAX_REPLY_TOKENS,
             tools=[RANK_TOOL],
             tool_choice={"type": "tool", "name": RANK_TOOL["name"]},
             messages=[{"role": "user", "content": RANK_PROMPT + json.dumps(items, ensure_ascii=False)}],

@@ -23,4 +23,4 @@ After the rules are applied, check on the schema page that isbn has a 13-digit p
 - **Fix flagged cells:** about 320 cells with a suggested fix, such as an ISBN without its spaces, 25/03/2026 read day first, seven as 7, and $2.50 as 2.50. About 110 distinct values go to Claude for a recommendation.
 - **Needs your input:** Damaged and Missing can be allowed as statuses with one click, and 60 days can raise the maximum.
 - **45 duplicate groups.** loan_id is left out of the comparison because every loan has its own.
-- A 30,000-row clean run takes about 2 minutes and costs roughly 10 to 40 cents.
+- A 30,000-row clean run takes about 2 minutes and costs roughly 2 to 5 cents on Haiku 5.5.

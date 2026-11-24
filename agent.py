@@ -10,6 +10,7 @@ Tool philosophy (matches tools.py):
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Callable
 import anthropic
@@ -334,7 +335,11 @@ def dispatch_tool(name: str, inputs: dict, schema: DataSchema) -> str:
         return json.dumps({"error": str(exc)})
 
 
-MODEL = "claude-haiku-4-5-20251001"
+# Which Claude model does the work, set by CLAUDE_MODEL. Haiku 5.5 since Nov 23: it flagged the same
+# rows as Haiku 4.5 on the test files for about a tenth of the cost. It thinks before it answers,
+# which is why replies get room for 16,000 tokens. CLAUDE_MODEL=claude-haiku-4-5-20251001 switches back.
+MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-5-5")
+MAX_REPLY_TOKENS = 16000
 
 # A visitor's own Anthropic key: sk-ant- then letters, digits, dashes and underscores.
 OWN_KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]{20,300}")
@@ -526,7 +531,7 @@ Be brief. One sentence of reasoning per step. Always mark with mark_remaining_vi
 
         response = client.messages.create(
             model=MODEL,
-            max_tokens=4096,
+            max_tokens=MAX_REPLY_TOKENS,
             system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             tools=TOOL_DEFINITIONS,
             messages=messages,

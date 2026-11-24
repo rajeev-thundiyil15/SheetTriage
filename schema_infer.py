@@ -77,13 +77,16 @@ Never guess a date order. Write decisions for someone who doesn't know the schem
 such as "Allow blanks" or "Maximum of 150", never "nullable: true" or "max_value: 150".
 """
 
+    from agent import MAX_REPLY_TOKENS, MODEL
+
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
+        model=MODEL,
+        max_tokens=MAX_REPLY_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
+    # The answer is the text block: newer models can put a thinking block before it.
+    raw = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
 
     # Strip accidental markdown fences
     if raw.startswith("```"):

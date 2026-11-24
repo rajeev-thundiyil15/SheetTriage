@@ -25,4 +25,4 @@ After the rules are applied, check on the schema page that plate has its pattern
 - **Fix flagged cells:** about 410 cells with a suggested fix, in about 325 groups in total. About 160 distinct values go to Claude for a recommendation.
 - **Needs your input:** Skoda can be allowed as a make, and 15 hours can raise labour_hours to 15. A lowercase plate typed back in capitals (such as AB12 CDE) is accepted; typed without the space it's refused.
 - **40 duplicate groups.** service_id is left out of the comparison because every service has its own.
-- With 18 columns the run takes longer than the narrower files: roughly 2 to 4 minutes, and roughly 15 to 50 cents.
+- With 18 columns the run takes longer than the narrower files: roughly 2 to 3 minutes, and about 2 cents on Haiku 5.5 (measured Nov 23: 1,278 rows flagged, 8 steps, $0.018).

@@ -146,14 +146,14 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 | SQLite | Free, part of Python |
 | Google sign-in | Free |
 | Stripe | A fee per payment only |
-| Claude Haiku 4.5 | A few cents per run; Part 1 measures the real figure |
+| Claude Haiku 5.5 | About half a cent for a small file and 2 cents for 30,000 rows and 18 columns (measured Nov 23) |
 
 ## Decisions
 
 1. ~~**Railway volume:** add one in the dashboard, mounted at `/data`.~~ Done Nov 10.
 2. ~~**Sign-in provider.**~~ Google, decided Nov 10.
 3. **Free tier numbers:** 3 runs a day for now. The largest free file is still 30,000 rows.
-4. **Paid price.** First measure Claude cost per run (Part 1) and test Haiku 5.5, which is listed at about a tenth of Haiku 4.5's price.
+4. **Paid price: $5 a month** (decided Nov 23). Free stays at 3 runs a day; the paid plan is for anyone who wants more than that. Per-file pricing was dropped: with 3 free files a day almost nobody would pay for a single file, and Stripe's fee of about 30 cents plus 2.9% eats a small charge. Stripe leaves about $4.55 of the $5. The monthly run cap (`PAID_RUNS_PER_MONTH`, 100 now) has to keep the AI cost under that. On Haiku 5.5 (the default since Nov 23) a 30,000-row run costs about 2 cents, so 100 large runs cost about $2.
 5. **Runs at once:** start at 2, and change it once a 30,000-row run's memory use on Railway is measured.
 6. **Bring your own key, alongside the free runs** (Nov 23). Most of the people this is for won't have an Anthropic API key, so the 3 free runs stay as the easy path. Anyone who has a key can add it for unlimited runs, which cost the server nothing. Billing waits until feedback shows people would pay; the ReviewLab question asks whether they'd rather pay a small monthly fee or use their own key.
    - The key goes with the run request over HTTPS, is checked with one 1-token request, and lives only in the run's memory. It's never stored on the server, and is kept out of error messages.
