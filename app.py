@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 import auth  # noqa: E402  (reads AUTH_MODE, so .env has to be loaded first)
+import billing  # noqa: E402  (reads the Stripe settings)
 import suggestions as fixes  # noqa: E402
 import tools  # noqa: E402
 from agent import OWN_KEY_SHAPE, check_own_key, derive_report_path, own_key_problem, run_agent  # noqa: E402
@@ -105,10 +106,26 @@ def _owner(request: Request) -> str:
     return user["id"] if user else "session:" + auth.session_id(request)
 
 
+def _plan(user: dict | None) -> str:
+    """free or paid. Paid only while Stripe says the subscription is live (see billing.is_paid)."""
+    return "paid" if billing.is_paid(user) else "free"
+
+
+def _billing_details(user: dict) -> dict:
+    """What the account menu and the plans page show about the monthly plan."""
+    paid = _plan(user) == "paid"
+    return {
+        "paid_until": user.get("paid_until") if paid else None,
+        "cancel_at_period_end": bool(user.get("cancel_at_period_end")) and paid,
+        "past_due": paid and user.get("plan_status") == "past_due",
+        "can_manage_billing": bool(user.get("stripe_customer_id")),
+    }
+
+
 def _keep_seconds(user: dict | None, demo: bool) -> float:
     if demo or not user:
         return JOB_FILE_TTL_SECONDS
-    return KEEP_DAYS.get(user["plan"], KEEP_DAYS["free"]) * 24 * 60 * 60
+    return KEEP_DAYS[_plan(user)] * 24 * 60 * 60
 
 
 def _month_start(months_ahead: int = 0) -> float:
@@ -120,7 +137,7 @@ def _month_start(months_ahead: int = 0) -> float:
 
 def _usage(request: Request, user: dict | None) -> dict:
     """How many runs this person has used, their limit, and when the next one frees up."""
-    if user and user["plan"] == "paid":
+    if _plan(user) == "paid":
         used = len(store.run_times(_month_start(), owner=user["id"]))
         limit = PAID_RUNS_PER_MONTH
         return {"runs_used": used, "run_limit": limit, "run_period": "month",
@@ -150,7 +167,9 @@ def _limit_message(usage: dict) -> str:
                 "They reset on the 1st.")
     return (f"You've used your {usage['run_limit']} free runs for today. "
             f"You can run another file in {_wait_text(usage['next_run_at'] - time.time())}, "
-            "or add your own Anthropic API key for as many runs as you like.")
+            "or add your own Anthropic API key for as many runs as you like."
+            + (f" The monthly plan ({billing.PRICE_TEXT}) gives up to {PAID_RUNS_PER_MONTH} runs a month."
+               if billing.enabled() and auth.accounts_enabled() else ""))
 
 
 # ── Helpers ──
@@ -322,12 +341,34 @@ async def me(request: Request):
         "google_client_id": auth.GOOGLE_CLIENT_ID if auth.AUTH_MODE == "google" else None,
         "signed_in": user is not None,
         "email": user["email"] if user else None,
-        "plan": user["plan"] if user else None,
+        "plan": _plan(user) if user else None,
+        "billing": billing.enabled() and auth.accounts_enabled(),
+        "price_text": billing.PRICE_TEXT,
+        "paid_runs_per_month": PAID_RUNS_PER_MONTH,
+        **(_billing_details(user) if user else {}),
         "keep_hours": _keep_seconds(user, demo=False) / 3600,
         "demo_keep_hours": JOB_FILE_TTL_SECONDS / 3600,
         "demo_data": DEMO_DATA,
         **_usage(request, user),
     }
+
+
+def _require_own_page(request: Request, refusal: str) -> None:
+    """Only the site's own pages can send JSON with the person's cookies: another site can't,
+    so it can't sign someone in, or start a payment, on their behalf."""
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise HTTPException(415, "Expected JSON.")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/") and             origin.split("://")[-1] != request.headers.get("host", ""):
+        raise HTTPException(403, refusal)
+
+
+def _site_url(request: Request) -> str:
+    """The site's address for Stripe to send people back to: https behind Railway's proxy."""
+    if os.getenv("SITE_URL"):
+        return os.getenv("SITE_URL").rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+    return f"{proto}://{request.headers.get('host', request.url.netloc)}"
 
 
 def _safe_next(next: str) -> str:
@@ -348,11 +389,7 @@ async def google_sign_in(request: Request):
         raise HTTPException(404, "Not found")
     # Only the site's own pages can send JSON here: another site can't, so it can't sign
     # someone into an account that isn't theirs.
-    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
-        raise HTTPException(415, "Expected JSON.")
-    origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/") and             origin.split("://")[-1] != request.headers.get("host", ""):
-        raise HTTPException(403, "Sign-in has to come from this site.")
+    _require_own_page(request, "Sign-in has to come from this site.")
     try:
         body = await request.json()
         user_id, email = auth.google_user(str(body.get("credential", "")))
@@ -390,10 +427,78 @@ async def delete_account(request: Request):
     user = _user(request)
     if not user:
         raise HTTPException(401, "You're not signed in.")
+    # A live subscription is cancelled first, so a deleted account never goes on being charged.
+    if user.get("subscription_id") and user.get("plan_status") not in (None, "canceled", "incomplete_expired"):
+        try:
+            await asyncio.to_thread(billing.cancel_subscription, user["subscription_id"])
+        except billing.BillingError as e:
+            raise HTTPException(502, str(e))
     store.delete_owner(user["id"])
     response = JSONResponse({"deleted": True})
     auth.sign_out(response)
     return response
+
+
+# ── The monthly plan (Stripe) ──
+
+@app.get("/pricing")
+async def pricing_page():
+    return FileResponse("static/pricing.html")
+
+
+def _billing_user(request: Request) -> dict:
+    if not (billing.enabled() and auth.accounts_enabled()):
+        raise HTTPException(404, "Not found")
+    _require_own_page(request, "Billing has to start from this site.")
+    user = _user(request)
+    if not user:
+        raise HTTPException(401, "Sign in first, so the plan is saved to your account.")
+    return user
+
+
+@app.post("/billing/checkout")
+async def start_checkout(request: Request):
+    """Sends a signed-in person to Stripe's payment page for the monthly plan."""
+    user = _billing_user(request)
+    if _plan(user) == "paid":
+        raise HTTPException(409, "You're already on the monthly plan. Manage billing changes or cancels it.")
+    site = _site_url(request)
+    try:
+        url = await asyncio.to_thread(billing.create_checkout, user, f"{site}/files?upgraded=1", f"{site}/pricing")
+    except billing.BillingError as e:
+        raise HTTPException(502, str(e))
+    return {"url": url}
+
+
+@app.post("/billing/portal")
+async def open_billing_portal(request: Request):
+    """Sends a subscriber to Stripe's page for cancelling, changing the card and seeing invoices."""
+    user = _billing_user(request)
+    if not user.get("stripe_customer_id"):
+        raise HTTPException(400, "There's no billing on this account yet.")
+    try:
+        url = await asyncio.to_thread(billing.create_portal, user["stripe_customer_id"], f"{_site_url(request)}/pricing")
+    except billing.BillingError as e:
+        raise HTTPException(502, str(e))
+    return {"url": url}
+
+
+@app.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Stripe's signed messages about payments and subscriptions: the only thing that changes a plan."""
+    if not billing.enabled():
+        raise HTTPException(404, "Not found")
+    payload = await request.body()
+    try:
+        event = billing.read_event(payload, request.headers.get("stripe-signature"))
+    except Exception:
+        raise HTTPException(400, "That message isn't signed by Stripe.")
+    if store.stripe_event_seen(event["id"]):
+        return {"received": True}
+    # If Stripe can't be reached to read the subscription, this fails and Stripe sends it again.
+    await asyncio.to_thread(billing.handle_event, store, event)
+    store.record_stripe_event(event["id"], event.get("type", ""))
+    return {"received": True}
 
 
 # ── Uploads ──

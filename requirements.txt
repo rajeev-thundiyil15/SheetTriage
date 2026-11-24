@@ -8,3 +8,4 @@ python-multipart>=0.0.9
 aiofiles>=23.0.0
 google-auth>=2.30.0
 requests>=2.31.0
+stripe>=17.1.0

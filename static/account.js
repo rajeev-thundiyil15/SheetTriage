@@ -35,11 +35,21 @@ function navItem(tag, props, text) {
 }
 
 async function deleteAccount() {
-  const ok = confirm('Delete your account? This removes every file and result saved to it, and cannot be undone.');
+  const ok = confirm('Delete your account? This removes every file and result saved to it, and cannot be undone. '
+    + 'If you\'re on the monthly plan, it\'s cancelled too.');
   if (!ok) return;
   const res = await fetch('/account', { method: 'DELETE' });
-  if (res.ok) window.location.href = '/app';
-  else alert('Your account could not be deleted. Please try again.');
+  if (res.ok) { window.location.href = '/app'; return; }
+  const body = await res.json().catch(() => ({}));
+  alert(body.detail || 'Your account could not be deleted. Please try again.');
+}
+
+// Stripe's billing page: cancel, change the card, see invoices. The server gives the address.
+async function openBilling() {
+  const res = await fetch('/billing/portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok && body.url) window.location.href = body.url;
+  else alert(body.detail || 'The billing page could not be opened. Please try again.');
 }
 
 // Privacy and terms links at the foot of every page: in the page's own footer if it has one.
@@ -77,9 +87,17 @@ window.accountReady.then(me => {
 
     const panel = document.createElement('div');
     panel.className = 'account-menu-panel';
-    const plan = me.plan === 'paid' ? 'Paid plan' : 'Free plan';
+    const plan = me.plan === 'paid' ? 'Monthly plan' : 'Free plan';
     const usage = ` · ${me.runs_used} of ${me.run_limit} runs used ${me.run_period === 'month' ? 'this month' : 'today'}`;
     panel.append(navItem('div', { className: 'menu-note' }, plan + usage));
+
+    // The monthly plan: upgrade from the plans page, or manage it on Stripe's own billing page.
+    if (me.billing && me.plan !== 'paid') {
+      panel.append(navItem('a', { href: '/pricing', className: 'menu-link', id: 'menu-upgrade' }, `Upgrade (${me.price_text})`));
+    }
+    if (me.billing && me.can_manage_billing) {
+      panel.append(navItem('button', { type: 'button', id: 'menu-billing', onclick: openBilling }, 'Manage billing'));
+    }
 
     const signOut = document.createElement('form');
     signOut.method = 'post';

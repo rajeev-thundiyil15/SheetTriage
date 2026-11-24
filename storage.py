@@ -28,7 +28,16 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL,
     plan TEXT NOT NULL DEFAULT 'free',
     stripe_customer_id TEXT,
+    subscription_id TEXT,
+    plan_status TEXT,
+    paid_until REAL,
+    cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
     created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS stripe_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    received_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS uploads (
     id TEXT PRIMARY KEY,
@@ -78,6 +87,15 @@ INTERRUPTED_MESSAGE = "This run was cut short when the server restarted. Please 
 
 UNFINISHED = ("queued", "running")
 
+# What Stripe tells us about an account's monthly plan (see billing.py). Never card details.
+USER_BILLING_COLUMNS = {
+    "subscription_id": "TEXT",
+    "plan_status": "TEXT",
+    "paid_until": "REAL",
+    "cancel_at_period_end": "INTEGER NOT NULL DEFAULT 0",
+}
+BILLING_FIELDS = {"plan", "stripe_customer_id", *USER_BILLING_COLUMNS}
+
 
 class Store:
     def __init__(self, data_dir: str | Path = DEFAULT_DATA_DIR):
@@ -96,6 +114,10 @@ class Store:
 
     def _add_missing_columns(self) -> None:
         """Databases made by an earlier version get the columns added since."""
+        have = {row[1] for row in self._db.execute("PRAGMA table_info(users)")}
+        for name, kind in USER_BILLING_COLUMNS.items():
+            if name not in have:
+                self._db.execute(f"ALTER TABLE users ADD COLUMN {name} {kind}")
         have = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)")}
         added = {
             "client": "TEXT",
@@ -132,6 +154,29 @@ class Store:
     def get_user(self, user_id: str) -> dict | None:
         rows = self._query("SELECT * FROM users WHERE id = ?", (user_id,))
         return dict(rows[0]) if rows else None
+
+    def set_billing(self, user_id: str, **fields) -> None:
+        """Saves what Stripe says about the account's plan."""
+        unknown = set(fields) - BILLING_FIELDS
+        if unknown:
+            raise ValueError(f"not billing fields: {sorted(unknown)}")
+        if fields:
+            columns = ", ".join(f"{name} = ?" for name in fields)
+            self._query(f"UPDATE users SET {columns} WHERE id = ?", (*fields.values(), user_id))
+
+    def user_by_customer(self, customer_id: str | None) -> dict | None:
+        if not customer_id:
+            return None
+        rows = self._query("SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,))
+        return dict(rows[0]) if rows else None
+
+    def stripe_event_seen(self, event_id: str) -> bool:
+        return bool(self._query("SELECT 1 FROM stripe_events WHERE id = ?", (event_id,)))
+
+    def record_stripe_event(self, event_id: str, kind: str) -> None:
+        """Marks a webhook message as handled, so a repeat of it is skipped."""
+        self._query("INSERT OR IGNORE INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)",
+                    (event_id, kind, time.time()))
 
     def delete_owner(self, owner: str) -> None:
         """Everything an owner has: jobs, their files, uploads, and the account itself."""

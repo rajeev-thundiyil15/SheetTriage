@@ -5,11 +5,17 @@ export class AccountMenu {
   readonly signInLink: Locator;
   readonly menu: Locator;
   readonly myFiles: Locator;
+  readonly upgrade: Locator;
+  readonly manageBilling: Locator;
+  readonly planNote: Locator;
 
   constructor(readonly page: Page) {
     this.signInLink = page.locator('#nav-sign-in');
     this.menu = page.locator('#account-menu');
     this.myFiles = page.locator('#nav-files');
+    this.upgrade = page.locator('#menu-upgrade');
+    this.manageBilling = page.locator('#menu-billing');
+    this.planNote = page.locator('#account-menu .menu-note');
   }
 
   /** Signs in from the sign-in page, then lands on `next`. */

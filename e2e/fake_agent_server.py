@@ -94,5 +94,54 @@ def fake_check_own_key(api_key):
 
 web.check_own_key = fake_check_own_key
 
+
+# ── A stand-in for Stripe, on the server with sign-in turned on ──
+# Stripe's payment page becomes /test/stripe/pay, which "pays" and sends the app the same
+# checkout.session.completed message Stripe would, two seconds later, the way Stripe's message
+# can arrive after the person is back on the site. Stripe's billing page becomes
+# /test/stripe/billing, which cancels the subscription the way someone would there.
+if os.getenv("AUTH_MODE") == "dev":
+    import threading
+    from urllib.parse import quote
+
+    from fastapi.responses import RedirectResponse
+
+    import billing
+
+    billing.STRIPE_SECRET_KEY = "sk_test_scripted"
+    billing.STRIPE_WEBHOOK_SECRET = "whsec_scripted"
+    billing.STRIPE_PRICE_ID = "price_scripted"
+    subscriptions = {}
+    PAYMENT_MESSAGE_DELAY = 2.0
+
+    def fake_subscription(user_id, status="active"):
+        return {"id": f"sub_{user_id}", "status": status, "customer": f"cus_{user_id}",
+                "cancel_at_period_end": False, "metadata": {"user_id": user_id},
+                "items": {"data": [{"current_period_end": int(time.time()) + 30 * 24 * 3600}]}}
+
+    billing.create_checkout = lambda user, success_url, cancel_url: \
+        f"/test/stripe/pay?user={quote(user['id'])}&next={quote(success_url)}"
+    billing.create_portal = lambda customer_id, return_url: \
+        f"/test/stripe/billing?customer={quote(customer_id)}&next={quote(return_url)}"
+    billing.get_subscription = lambda subscription_id: subscriptions[subscription_id]
+    billing.cancel_subscription = lambda subscription_id: subscriptions.pop(subscription_id, None)
+
+    @web.app.get("/test/stripe/pay")
+    def fake_payment_page(user: str, next: str):
+        subscriptions[f"sub_{user}"] = fake_subscription(user)
+        event = {"id": f"evt_pay_{user}", "type": "checkout.session.completed", "data": {"object": {
+            "mode": "subscription", "client_reference_id": user, "customer": f"cus_{user}",
+            "subscription": f"sub_{user}"}}}
+        threading.Timer(PAYMENT_MESSAGE_DELAY, billing.handle_event, args=(web.store, event)).start()
+        return RedirectResponse(next, status_code=303)
+
+    @web.app.get("/test/stripe/billing")
+    def fake_billing_page(customer: str, next: str):
+        user_id = customer.removeprefix("cus_")
+        subscriptions[f"sub_{user_id}"] = fake_subscription(user_id, status="canceled")
+        billing.handle_event(web.store, {"id": f"evt_end_{user_id}", "type": "customer.subscription.deleted",
+                                         "data": {"object": {"id": f"sub_{user_id}"}}})
+        return RedirectResponse(next, status_code=303)
+
 if __name__ == "__main__":
     uvicorn.run(web.app, host="127.0.0.1", port=PORT, log_level="warning")

@@ -137,6 +137,8 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 - **Stripe's customer portal** so people can cancel and update their card themselves.
 - **Test mode first:** all of Part 2 is built and tested against Stripe's test keys, with Playwright covering the checkout redirect.
 
+**Status, Nov 23:** built on the `billing` branch (`billing.py`, the `/pricing` page, Upgrade and Manage billing in the account menu). The account keeps `stripe_customer_id`, `subscription_id`, `plan_status`, `paid_until` and `cancel_at_period_end`, and a `stripe_events` table records each webhook message handled. Each message prompts a fresh read of the subscription from Stripe. `active`, `trialing` and `past_due` count as paid; a plan whose last message was lost still lapses 3 days after `paid_until`. Deleting an account cancels its subscription first. A test-mode payment page was created successfully with the real price ($3 USD monthly). Still to do: a full test-mode payment through the Stripe CLI's webhook forwarding, turning on the customer portal in Stripe's settings, then the Railway settings.
+
 ## Running costs
 
 | Item | Cost |
@@ -153,7 +155,7 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 1. ~~**Railway volume:** add one in the dashboard, mounted at `/data`.~~ Done Nov 10.
 2. ~~**Sign-in provider.**~~ Google, decided Nov 10.
 3. **Free tier numbers:** 3 runs a day for now. The largest free file is still 30,000 rows.
-4. **Paid price: $5 a month** (decided Nov 23). Free stays at 3 runs a day; the paid plan is for anyone who wants more than that. Per-file pricing was dropped: with 3 free files a day almost nobody would pay for a single file, and Stripe's fee of about 30 cents plus 2.9% eats a small charge. Stripe leaves about $4.55 of the $5. The monthly run cap (`PAID_RUNS_PER_MONTH`, 100 now) has to keep the AI cost under that. On Haiku 5.5 (the default since Nov 23) a 30,000-row run costs about 2 cents, so 100 large runs cost about $2.
+4. **Paid price: $3 a month** (decided Nov 23, first set at $5). Stripe leaves about $2.61 of each $3. Free stays at 3 runs a day; the paid plan is for anyone who wants more than that. Per-file pricing was dropped: with 3 free files a day almost nobody would pay for a single file, and Stripe's fee of about 30 cents plus 2.9% eats a small charge. The monthly run cap (`PAID_RUNS_PER_MONTH`, 100 now) has to keep the AI cost under that. On Haiku 5.5 (the default since Nov 23) a 30,000-row run costs about 2 cents, so 100 large runs cost about $2: the cap keeps even the heaviest user under the $2.61 left after fees.
 5. **Runs at once:** start at 2, and change it once a 30,000-row run's memory use on Railway is measured.
 6. **Bring your own key, alongside the free runs** (Nov 23). Most of the people this is for won't have an Anthropic API key, so the 3 free runs stay as the easy path. Anyone who has a key can add it for unlimited runs, which cost the server nothing. Billing waits until feedback shows people would pay; the ReviewLab question asks whether they'd rather pay a small monthly fee or use their own key.
    - The key goes with the run request over HTTPS, is checked with one 1-token request, and lives only in the run's memory. It's never stored on the server, and is kept out of error messages.

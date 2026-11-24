@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetTriage — Plans</title>
+  <link rel="stylesheet" href="/static/account.css">
+  <link rel="stylesheet" href="/static/legal.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+    .plan {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .plan.current { border-color: var(--accent); }
+    .plan h2 { margin: 0; font-size: 16px; }
+    .plan .price { font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+    .plan .price span { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+    .plan ul { flex: 1; }
+    .plan-badge { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .plan-action {
+      width: 100%; padding: 10px; border-radius: var(--radius); border: 1px solid var(--accent);
+      background: var(--accent); color: #fff; font: inherit; font-size: 14px; font-weight: 600;
+      cursor: pointer; text-align: center; text-decoration: none; display: block;
+    }
+    .plan-action:hover:not(:disabled) { background: var(--accent-hover); }
+    .plan-action.secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .plan-action:disabled { opacity: .5; cursor: not-allowed; }
+    .plan-note { font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+    .plan-note:empty { display: none; }
+    .plan-error { font-size: 13px; line-height: 1.5; color: #b91c1c; }
+    .plan-error:empty { display: none; }
+    @media (max-width: 640px) { .plans { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <a href="/" class="nav-logo">SheetTriage</a>
+  <div class="nav-right">
+    <a href="/app" class="nav-back">Clean a file</a>
+    <span id="account-nav"></span>
+  </div>
+</nav>
+
+<main class="legal">
+  <h1>Plans</h1>
+  <p class="updated">Cancel any time. Payments are handled by Stripe, so your card details never reach SheetTriage.</p>
+
+  <div class="plans">
+    <section class="plan" id="plan-free">
+      <h2>Free</h2>
+      <div class="price">$0</div>
+      <ul>
+        <li>3 runs a day</li>
+        <li>Files up to 5 MB and 30,000 rows</li>
+        <li>Results kept for 1 hour, or 7 days when signed in</li>
+      </ul>
+      <div class="plan-badge" id="free-badge"></div>
+    </section>
+
+    <section class="plan" id="plan-monthly">
+      <h2>Monthly</h2>
+      <div class="price" id="monthly-price">$3 <span>a month</span></div>
+      <ul>
+        <li>More than 3 runs a day: up to <span id="monthly-runs">100</span> a month</li>
+        <li>Files up to 5 MB and 30,000 rows</li>
+        <li>Results kept for 30 days</li>
+      </ul>
+      <div class="plan-note" id="monthly-note"></div>
+      <button class="plan-action" id="monthly-action" type="button" disabled>Loading...</button>
+      <div class="plan-error" id="monthly-error" role="alert"></div>
+    </section>
+  </div>
+
+  <h2>Questions</h2>
+  <ul>
+    <li><strong>Can I cancel?</strong> Yes, any time, under Manage billing. You keep the plan until the end of the month you've paid for, then go back to the free plan. Your saved files stay.</li>
+    <li><strong>Refunds?</strong> There are no refunds for part of a month.</li>
+    <li><strong>Own Anthropic API key?</strong> You can add one when you run a file instead, for as many runs as you like on your own account.</li>
+  </ul>
+</main>
+
+<script src="/static/account.js"></script>
+<script>
+  const action = document.getElementById('monthly-action');
+  const note = document.getElementById('monthly-note');
+  const error = document.getElementById('monthly-error');
+
+  function longDate(seconds) {
+    return new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  // Stripe's payment page, or its billing page: the server gives the address, the browser goes there.
+  async function goToStripe(path, label) {
+    action.disabled = true;
+    action.textContent = 'Opening Stripe...';
+    error.textContent = '';
+    try {
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || 'Something went wrong. Please try again.');
+      window.location.href = body.url;
+    } catch (e) {
+      error.textContent = e.message;
+      action.disabled = false;
+      action.textContent = label;
+    }
+  }
+
+  window.accountReady.then(me => {
+    if (!me) return;
+    if (me.price_text) {
+      const [amount, ...rest] = me.price_text.split(' ');
+      document.getElementById('monthly-price').replaceChildren(amount + ' ', Object.assign(document.createElement('span'), { textContent: rest.join(' ') }));
+    }
+    if (me.paid_runs_per_month) document.getElementById('monthly-runs').textContent = me.paid_runs_per_month;
+    const paid = me.plan === 'paid';
+    document.getElementById(paid ? 'plan-monthly' : 'plan-free').classList.toggle('current', !!me.signed_in);
+    document.getElementById('free-badge').textContent = me.signed_in && !paid ? 'Your plan' : '';
+
+    if (!me.billing) {
+      action.textContent = 'Coming soon';
+      return;
+    }
+    if (!me.signed_in) {
+      const link = Object.assign(document.createElement('a'), {
+        className: 'plan-action', href: '/sign-in?next=' + encodeURIComponent('/pricing'), textContent: 'Sign in to upgrade',
+      });
+      action.replaceWith(link);
+      note.textContent = 'The plan is saved to your account, so sign in first.';
+      return;
+    }
+    if (paid) {
+      note.textContent = me.past_due
+        ? "Your last payment didn't go through. Stripe will try your card again; update it under Manage billing."
+        : me.cancel_at_period_end
+          ? `Your plan ends on ${longDate(me.paid_until)}. You can restart it under Manage billing.`
+          : me.paid_until ? `Your plan renews on ${longDate(me.paid_until)}.` : 'You\'re on the monthly plan.';
+      action.textContent = 'Manage billing';
+      action.classList.add('secondary');
+      action.disabled = false;
+      action.onclick = () => goToStripe('/billing/portal', 'Manage billing');
+      return;
+    }
+    action.textContent = 'Upgrade';
+    action.disabled = false;
+    action.onclick = () => goToStripe('/billing/checkout', 'Upgrade');
+    if (me.can_manage_billing) {
+      note.textContent = 'Your earlier plan has ended. You can upgrade again, or see past invoices under Manage billing.';
+    }
+  });
+</script>
+</body>
+</html>
