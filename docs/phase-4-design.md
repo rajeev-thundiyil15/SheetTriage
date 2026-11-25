@@ -17,7 +17,7 @@ Part 1 is built and tested on `phase-1-reliability`, not yet on master or live. 
 - **One daily limit for everyone not paying:** 3 runs a day, visitors counted by a scrambled address and free accounts by account. Paid plans get a monthly number.
 - **Two runs at once** by giving each run thread its own tool state, rather than passing a state object to every tool.
 
-Still to do in Part 1: one real Google sign-in, merging to master and checking the live site, and measuring a 30,000-row run's memory on Railway.
+Part 1 is live. A real Google sign-in worked on the live site on Nov 24, and the Google Cloud app is published. Still to do: measuring a 30,000-row run's memory on Railway.
 
 ## Who can do what
 
@@ -67,6 +67,8 @@ A Railway volume named `sheettriage-volume` is mounted at `/data` (added Nov 10)
 ```
 
 Only `/data` survives a redeploy. Anything written elsewhere on the container is still wiped.
+
+The start command (`uvicorn app:app --host 0.0.0.0 --port $PORT`), the health check (`/app`, 60 seconds) and the restart policy (on failure, 3 retries) are set on the Railway service itself. `railway.json` was removed on Nov 24 because Railway stops reading it on Dec 1. Railway's replacement, a `.railway/` setup file, wasn't used: it has to be applied with the CLI, and an apply deletes anything the file leaves out, which would include the volume.
 
 ### Tables
 
@@ -137,7 +139,7 @@ Record `input_tokens` and `output_tokens` from each Claude response on the job. 
 - **Stripe's customer portal** so people can cancel and update their card themselves.
 - **Test mode first:** all of Part 2 is built and tested against Stripe's test keys, with Playwright covering the checkout redirect.
 
-**Status, Nov 23:** built on the `billing` branch (`billing.py`, the `/pricing` page, Upgrade and Manage billing in the account menu). The account keeps `stripe_customer_id`, `subscription_id`, `plan_status`, `paid_until` and `cancel_at_period_end`, and a `stripe_events` table records each webhook message handled. Each message prompts a fresh read of the subscription from Stripe. `active`, `trialing` and `past_due` count as paid; a plan whose last message was lost still lapses 3 days after `paid_until`. Deleting an account cancels its subscription first. A test-mode payment page was created successfully with the real price ($3 USD monthly). Still to do: a full test-mode payment through the Stripe CLI's webhook forwarding, turning on the customer portal in Stripe's settings, then the Railway settings.
+**Status, Nov 23:** built on the `billing` branch (`billing.py`, the `/pricing` page, Upgrade and Manage billing in the account menu). The account keeps `stripe_customer_id`, `subscription_id`, `plan_status`, `paid_until` and `cancel_at_period_end`, and a `stripe_events` table records each webhook message handled. Each message prompts a fresh read of the subscription from Stripe. `active`, `trialing` and `past_due` count as paid; a plan whose last message was lost still lapses 3 days after `paid_until`. Deleting an account cancels its subscription first. A test payment went through end to end on the local site, using the Stripe CLI's webhook forwarding. The Stripe settings are on Railway, and Stripe's messages reach the live site. Still to do: finish the live-site test payment and cancel, replace the test keys, then switch to live mode (activate the account, a live product, webhook and keys, and a sales tax check).
 
 ## Running costs
 
